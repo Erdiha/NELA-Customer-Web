@@ -1,5 +1,5 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import AddressInput from "./components/AddressInput";
 import { calculateRidePrice } from "./services/pricingService";
 import {
@@ -16,43 +16,10 @@ import AccountDashboard from "./components/AccountDashboard";
 import { sendSMS, SMS_TEMPLATES } from "./services/smsServices";
 import RideTrackingPage from "./components/RideTrackingPage";
 
-// URL State Management - FIXED VERSION
-const saveRideToURL = (rideId) => {
-  const params = new URLSearchParams();
-  params.set("rideId", rideId);
-  const newUrl = `${window.location.pathname}?${params.toString()}`;
-  window.history.replaceState({}, "", newUrl);
-  console.log("💾 Active ride saved to URL:", rideId);
-};
-
-const getRideFromURL = () => {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("rideId");
-};
-
-const clearRideFromURL = () => {
-  window.history.replaceState({}, "", window.location.pathname);
-  console.log("🗑️ Ride cleared from URL");
-};
-
-// Booking progress (for incomplete bookings only)
-const saveBookingProgress = (bookingData) => {
-  sessionStorage.setItem("bookingProgress", JSON.stringify(bookingData));
-  console.log("💾 Booking progress saved");
-};
-
-const getBookingProgress = () => {
-  const saved = sessionStorage.getItem("bookingProgress");
-  if (saved) {
-    console.log("✅ Booking progress restored");
-    return JSON.parse(saved);
-  }
-  return null;
-};
-
-const clearBookingProgress = () => {
-  sessionStorage.removeItem("bookingProgress");
-  console.log("🗑️ Booking progress cleared");
+// ✅ FIXED: In-memory state management (no localStorage/sessionStorage)
+const inMemoryState = {
+  activeRideId: null,
+  bookingProgress: null,
 };
 
 const GuestAccountPrompt = ({
@@ -159,50 +126,47 @@ function App() {
   const [showFindingDriver, setShowFindingDriver] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
 
-  // ✅ FIXED: Restore active ride on mount
+  // ✅ Track if we're currently restoring state (prevent saving during restoration)
+  const isRestoringRef = useRef(false);
+
+  // ✅ FIXED: Restore active ride and booking progress on mount (from memory)
   useEffect(() => {
-    const urlRideId = getRideFromURL();
-    const path = window.location.pathname;
+    isRestoringRef.current = true;
 
-    // Check for /track/ URL format
-    if (path.startsWith("/track/")) {
-      const trackingRideId = path.replace("/track/", "");
-      console.log("🔗 Loading ride from tracking URL:", trackingRideId);
-      setRideId(trackingRideId);
+    // Restore active ride ID
+    if (inMemoryState.activeRideId) {
+      console.log(
+        "🔗 Restoring active ride from memory:",
+        inMemoryState.activeRideId
+      );
+      setRideId(inMemoryState.activeRideId);
       setCurrentPage("tracking");
-      return;
     }
 
-    // Check for URL parameter format
-    if (urlRideId) {
-      console.log("🔗 Restoring active ride from URL:", urlRideId);
-      setRideId(urlRideId);
-      setCurrentPage("tracking");
-      return;
+    // Restore booking progress
+    if (inMemoryState.bookingProgress) {
+      console.log("📋 Restoring booking progress from memory");
+      const saved = inMemoryState.bookingProgress;
+
+      if (saved.pickupAddress) setPickupAddress(saved.pickupAddress);
+      if (saved.destinationAddress)
+        setDestinationAddress(saved.destinationAddress);
+      if (saved.priceEstimate) setPriceEstimate(saved.priceEstimate);
+      if (saved.customerDetails) setCustomerDetails(saved.customerDetails);
+      if (saved.isScheduled !== undefined) setIsScheduled(saved.isScheduled);
+      if (saved.scheduledDateTime)
+        setScheduledDateTime(saved.scheduledDateTime);
+      if (saved.selectedPaymentMethod)
+        setSelectedPaymentMethod(saved.selectedPaymentMethod);
     }
 
-    // Restore incomplete booking progress
-    const savedProgress = getBookingProgress();
-    if (savedProgress) {
-      console.log("📋 Restoring booking progress");
-      if (savedProgress.pickupAddress)
-        setPickupAddress(savedProgress.pickupAddress);
-      if (savedProgress.destinationAddress)
-        setDestinationAddress(savedProgress.destinationAddress);
-      if (savedProgress.priceEstimate)
-        setPriceEstimate(savedProgress.priceEstimate);
-      if (savedProgress.customerDetails)
-        setCustomerDetails(savedProgress.customerDetails);
-      if (savedProgress.isScheduled !== undefined)
-        setIsScheduled(savedProgress.isScheduled);
-      if (savedProgress.scheduledDateTime)
-        setScheduledDateTime(savedProgress.scheduledDateTime);
-      if (savedProgress.selectedPaymentMethod)
-        setSelectedPaymentMethod(savedProgress.selectedPaymentMethod);
-    }
+    // Reset flag after restoration
+    setTimeout(() => {
+      isRestoringRef.current = false;
+    }, 100);
   }, []);
 
-  // ✅ FIXED: Auth state listener
+  // ✅ Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange((user) => {
       if (user) {
@@ -218,7 +182,7 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ FIXED: Load ride data when rideId changes
+  // ✅ Load ride data when rideId changes
   useEffect(() => {
     if (!rideId) return;
 
@@ -226,12 +190,12 @@ function App() {
 
     const loadRide = async () => {
       try {
-        console.log("📥 Calling getRideDetails for:", rideId);
+        console.log("🔥 Calling getRideDetails for:", rideId);
         const ride = await getRideDetails(rideId);
 
         if (!ride) {
           console.log("❌ Ride not found in Firebase");
-          clearRideFromURL();
+          inMemoryState.activeRideId = null;
           setRideId(null);
           setCurrentPage("home");
           alert("This ride is no longer available");
@@ -277,30 +241,24 @@ function App() {
     loadRide();
   }, [rideId]);
 
-  // ✅ FIXED: Real-time ride updates with proper deletion handling
+  // ✅ FIXED: Single ride subscription with proper deletion handling
   useEffect(() => {
     if (!rideId) return;
 
-    console.log("🔔 Subscribing to ride updates:", rideId);
+    console.log("📡 Subscribing to ride updates:", rideId);
 
     const unsubscribe = subscribeToRideUpdates(rideId, (updatedRide) => {
-      // ✅ CRITICAL: Handle ride deletion/cancellation
+      // Handle ride deletion/cancellation
       if (!updatedRide) {
-        console.log("❌ Ride was deleted or cancelled by driver");
-
-        // Clear all state
-        clearRideFromURL();
+        console.log("❌ Ride was deleted or cancelled");
+        inMemoryState.activeRideId = null;
         setRideId(null);
         setRideData(null);
         setPickupAddress(null);
         setDestinationAddress(null);
         setPriceEstimate(null);
         setShowFindingDriver(false);
-
-        // Redirect to home
         setCurrentPage("home");
-
-        // Show user-friendly message
         alert("This ride has been cancelled. You can book a new ride.");
         return;
       }
@@ -308,16 +266,16 @@ function App() {
       console.log("🔄 Ride update:", updatedRide.status);
       setRideData(updatedRide);
 
-      // ✅ Handle specific statuses
+      // Handle specific statuses
       if (updatedRide.status === "cancelled") {
         console.log("🚫 Ride cancelled");
         setTimeout(() => {
-          clearRideFromURL();
+          inMemoryState.activeRideId = null;
           setRideId(null);
           setRideData(null);
           setCurrentPage("home");
           alert("Your ride has been cancelled. Please book another ride.");
-        }, 2000); // Give user 2 seconds to see the cancelled status
+        }, 2000);
         return;
       }
 
@@ -327,14 +285,13 @@ function App() {
       ) {
         console.log("⚠️ No driver available");
         setShowFindingDriver(false);
-        // Don't clear the ride - let user see the status
         return;
       }
 
-      // ✅ Clear URL only when ride is completed successfully
+      // Clear ride from memory when completed
       if (updatedRide.status === "completed") {
-        console.log("✅ Ride completed, clearing URL");
-        clearRideFromURL();
+        console.log("✅ Ride completed, clearing from memory");
+        inMemoryState.activeRideId = null;
       }
 
       if (updatedRide.status === "accepted" && showFindingDriver) {
@@ -348,14 +305,10 @@ function App() {
     };
   }, [rideId, showFindingDriver]);
 
-  // ✅ NEW: Monitor pending timeout and auto-update to no_driver_available
+  // ✅ Monitor pending timeout
   useEffect(() => {
     if (!rideId || !rideData) return;
-
-    // Only monitor if status is still pending
     if (rideData.status !== "pending") return;
-
-    // Must have timeout info
     if (!rideData.timeoutAt) {
       console.warn("⚠️ Pending ride missing timeout info");
       return;
@@ -371,7 +324,6 @@ function App() {
         console.log("❌ Timeout reached - no driver accepted");
 
         try {
-          // Update ride status to no_driver_available
           await updateRideStatus(rideId, "no_driver_available", {
             reason: "No driver accepted within timeout period",
             timeoutReachedAt: new Date(),
@@ -384,10 +336,7 @@ function App() {
       }
     };
 
-    // Check immediately
     checkTimeout();
-
-    // Check every 10 seconds
     const interval = setInterval(checkTimeout, 10000);
 
     return () => {
@@ -395,50 +344,23 @@ function App() {
       clearInterval(interval);
     };
   }, [rideId, rideData?.status, rideData?.timeoutAt]);
+
+  // ✅ FIXED: Save state to memory (not localStorage)
   useEffect(() => {
-    if (!rideId) return;
+    // Don't save during restoration
+    if (isRestoringRef.current) return;
 
-    console.log("🔔 Subscribing to ride updates:", rideId);
+    // Save active ride ID
+    if (rideId) {
+      inMemoryState.activeRideId = rideId;
+      console.log("💾 Active ride saved to memory:", rideId);
+    } else {
+      inMemoryState.activeRideId = null;
+    }
 
-    const unsubscribe = subscribeToRideUpdates(rideId, (updatedRide) => {
-      if (!updatedRide) {
-        console.log("❌ Ride deleted or error");
-        clearRideFromURL();
-        setRideId(null);
-        setRideData(null);
-        setCurrentPage("home");
-        alert("This ride is no longer available");
-        return;
-      }
-
-      console.log("🔄 Ride update:", updatedRide.status);
-      setRideData(updatedRide);
-
-      // ✅ FIXED: Clear URL only when ride is complete
-      if (updatedRide.status === "completed") {
-        console.log("✅ Ride completed, clearing URL");
-        clearRideFromURL();
-      }
-
-      if (updatedRide.status === "accepted" && showFindingDriver) {
-        setShowFindingDriver(false);
-      }
-    });
-
-    return () => {
-      console.log("🔌 Unsubscribing from ride:", rideId);
-      unsubscribe();
-    };
-  }, [rideId, showFindingDriver]);
-
-  // ✅ FIXED: Save incomplete booking progress
-  useEffect(() => {
-    // Don't save if we have an active ride
-    if (rideId) return;
-
-    // Save partial booking progress
-    if (pickupAddress || destinationAddress || priceEstimate) {
-      saveBookingProgress({
+    // Save incomplete booking progress
+    if (!rideId && (pickupAddress || destinationAddress || priceEstimate)) {
+      inMemoryState.bookingProgress = {
         pickupAddress,
         destinationAddress,
         priceEstimate,
@@ -446,7 +368,10 @@ function App() {
         isScheduled,
         scheduledDateTime,
         selectedPaymentMethod,
-      });
+      };
+      console.log("💾 Booking progress saved to memory");
+    } else {
+      inMemoryState.bookingProgress = null;
     }
   }, [
     pickupAddress,
@@ -473,8 +398,8 @@ function App() {
     if (!user) {
       setCustomerDetails({ name: "", phone: "" });
     }
-    clearRideFromURL();
-    clearBookingProgress();
+    inMemoryState.activeRideId = null;
+    inMemoryState.bookingProgress = null;
     setCurrentPage("home");
   };
 
@@ -535,10 +460,10 @@ function App() {
 
       const newRideId = await createRideRequest(rideData);
 
-      // ✅ FIXED: Save ride ID to URL immediately
+      // Save ride ID to memory
       setRideId(newRideId);
-      saveRideToURL(newRideId);
-      clearBookingProgress(); // Clear partial booking data
+      inMemoryState.activeRideId = newRideId;
+      inMemoryState.bookingProgress = null; // Clear booking progress
 
       try {
         const trackingUrl = `${window.location.origin}/track/${newRideId}`;
@@ -905,13 +830,14 @@ function App() {
         </div>
       )}
 
-      <div className="pt-24 pb-8 px-4 min-h-screen flex items-center justify-center">
+      <div className=" pb-8 px-4 min-h-screen flex items-center justify-center">
         <div className="w-full max-w-md lg:max-w-lg mx-auto">
           <div className="card-glass p-4 sm:p-6 md:p-8 mt-8">
             <div className="text-start md:text-center md:mb-8 mb-4">
               <h1 className="text-xl md:text-4xl font-bold text-brand mb-3">
                 NELA Rides
               </h1>
+
               <p className="text-neutral-600 text-sm sm:text-base md:text-lg font-medium">
                 Each Drive Is as Good as The last One.
               </p>
@@ -1152,7 +1078,6 @@ function App() {
         isOpen={showCalendar}
         onClose={() => setShowCalendar(false)}
         onSelectDateTime={(dateTime) => {
-          // ✅ FIX: Store datetime string in local timezone
           console.log("Selected datetime object:", dateTime);
           console.log(
             "Hours:",

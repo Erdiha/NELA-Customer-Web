@@ -526,7 +526,7 @@ const AccountDashboard = ({
   };
 
   return (
-    <div className="flex flex-col p-1 max-w-full min-h-[90vh] w-full md:max-w-2xl justify-center">
+    <div className="flex flex-col p-1 max-w-full min-h-[90vh] w-full md:max-w-2xl justify-center my-10 md:mx-0">
       <ProfileHeader />
       <StatsCards />
       <TabNavigation />

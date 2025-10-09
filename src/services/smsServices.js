@@ -3,7 +3,7 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/config";
 
 // ✅ FIXED: Actual SMS sending via Firebase Functions
-const sendSMSFunction = httpsCallable(functions, "sendSMS");
+const sendSMSFunction = httpsCallable(functions, "sendSMSv2");
 
 export async function sendSMS(to, message) {
   try {

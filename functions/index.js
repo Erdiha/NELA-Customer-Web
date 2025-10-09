@@ -1,44 +1,50 @@
 /* eslint-disable no-unused-vars */
-import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { initializeApp } from "firebase-admin/app";
-import { defineString } from "firebase-functions/params";
+import { defineSecret } from "firebase-functions/params";
 import twilio from "twilio";
 
 initializeApp();
 
-// Define config parameters
-const twilioAccountSid = defineString("TWILIO_ACCOUNT_SID");
-const twilioAuthToken = defineString("TWILIO_AUTH_TOKEN");
-const twilioPhone = defineString("TWILIO_PHONE_NUMBER");
+// Define secrets (not strings!)
+const twilioAccountSid = defineSecret("TWILIO_ACCOUNT_SID");
+const twilioAuthToken = defineSecret("TWILIO_AUTH_TOKEN");
+const twilioPhone = defineSecret("TWILIO_PHONE_NUMBER");
 
 // Manual SMS function
-export const sendSMS = onCall(async (request) => {
-  const { to, message } = request.data;
+export const sendSMSv2 = onCall(
+  { secrets: [twilioAccountSid, twilioAuthToken, twilioPhone] },
+  async (request) => {
+    const { to, message } = request.data;
 
-  if (!to || !message) {
-    throw new HttpsError("invalid-argument", "Phone and message required");
+    if (!to || !message) {
+      throw new HttpsError("invalid-argument", "Phone and message required");
+    }
+
+    const client = twilio(twilioAccountSid.value(), twilioAuthToken.value());
+
+    try {
+      const result = await client.messages.create({
+        body: message,
+        to: to,
+        from: twilioPhone.value(),
+      });
+
+      return { success: true, messageId: result.sid };
+    } catch (error) {
+      console.error("SMS error:", error);
+      throw new HttpsError("internal", error.message);
+    }
   }
-
-  const client = twilio(twilioAccountSid.value(), twilioAuthToken.value());
-
-  try {
-    const result = await client.messages.create({
-      body: message,
-      to: to,
-      from: twilioPhone.value(),
-    });
-
-    return { success: true, messageId: result.sid };
-  } catch (error) {
-    console.error("SMS error:", error);
-    throw new HttpsError("internal", error.message);
-  }
-});
+);
 
 // Auto SMS on ride status change
-export const onRideStatusChange = onDocumentUpdated(
-  "rides/{rideId}",
+export const onRideStatusChangev2 = onDocumentUpdated(
+  {
+    document: "rides/{rideId}",
+    secrets: [twilioAccountSid, twilioAuthToken, twilioPhone],
+  },
   async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
@@ -81,6 +87,7 @@ export const onRideStatusChange = onDocumentUpdated(
         to: phone,
         from: twilioPhone.value(),
       });
+      console.log("✅ SMS sent successfully to", phone);
     } catch (error) {
       console.error("SMS failed:", error);
     }

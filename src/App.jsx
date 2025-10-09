@@ -15,11 +15,16 @@ import AccountSystem from "./components/AccountSystem";
 import AccountDashboard from "./components/AccountDashboard";
 import { sendSMS, SMS_TEMPLATES } from "./services/smsServices";
 import RideTrackingPage from "./components/RideTrackingPage";
+import TermsAndConditionsModal from "./components/TermsAndConditionsModal";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { db } from "./firebase/config";
+const CURRENT_TERMS_VERSION = "1.0";
 
 // ✅ FIXED: In-memory state management (no localStorage/sessionStorage)
 const inMemoryState = {
   activeRideId: null,
   bookingProgress: null,
+  termsAccepted: false,
 };
 
 const GuestAccountPrompt = ({
@@ -125,6 +130,8 @@ function App() {
   const [rideData, setRideData] = useState(null);
   const [showFindingDriver, setShowFindingDriver] = useState(false);
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
 
   // ✅ Track if we're currently restoring state (prevent saving during restoration)
   const isRestoringRef = useRef(false);
@@ -384,6 +391,12 @@ function App() {
     rideId,
   ]);
 
+  useEffect(() => {
+    // Check if terms already accepted in this session
+    const termsAccepted = inMemoryState.termsAccepted || false;
+    setHasAcceptedTerms(termsAccepted);
+  }, []);
+
   const resetBookingFlow = () => {
     setPickupAddress(null);
     setDestinationAddress(null);
@@ -415,9 +428,66 @@ function App() {
       alert("Please select both pickup and destination addresses");
     }
   };
+  const handleBookRide = async () => {
+    let needsTerms = false;
 
-  const handleBookRide = () => {
+    // Check if user needs to see terms
+    if (!user) {
+      // Guest - check session memory
+      needsTerms = !inMemoryState.termsAccepted;
+    } else {
+      // Logged-in user - check Firebase
+      try {
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          needsTerms = userData.termsAcceptedVersion !== CURRENT_TERMS_VERSION;
+        } else {
+          needsTerms = true; // No user doc, show terms
+        }
+      } catch (error) {
+        console.error("Error checking terms:", error);
+        needsTerms = true; // On error, show terms to be safe
+      }
+    }
+
+    if (needsTerms) {
+      setShowTermsModal(true);
+      return;
+    }
+
+    // Terms already accepted - proceed
     setShowPaymentOptions(true);
+  };
+
+  const handleAcceptTerms = async () => {
+    try {
+      // Save to Firebase for logged-in users
+      if (user) {
+        await updateDoc(doc(db, "users", user.uid), {
+          termsAcceptedVersion: CURRENT_TERMS_VERSION,
+          termsAcceptedAt: new Date(),
+        });
+        console.log("✅ Terms saved to user account");
+      } else {
+        // Guest - save to session memory
+        inMemoryState.termsAccepted = true;
+        console.log("✅ Terms saved to session (guest)");
+      }
+
+      setShowTermsModal(false);
+      setShowPaymentOptions(true);
+    } catch (error) {
+      console.error("Error saving terms:", error);
+      // Even on error, allow them to proceed (terms modal was shown)
+      setShowTermsModal(false);
+      setShowPaymentOptions(true);
+    }
+  };
+
+  const handleDeclineTerms = () => {
+    setShowTermsModal(false);
+    alert("You must accept the terms and conditions to book a ride.");
   };
 
   const handlePaymentMethodSelect = (method) => {
@@ -440,7 +510,7 @@ function App() {
       const rideData = {
         customerName: customerDetails.name,
         customerPhone: customerDetails.phone,
-        customerEmail: user?.email || null,
+        customerEmail: user?.email || customerDetails.email || null,
         customerId: user?.uid || null,
         pickupAddress: pickupAddress.address,
         destinationAddress: destinationAddress.address,
@@ -465,15 +535,15 @@ function App() {
       inMemoryState.activeRideId = newRideId;
       inMemoryState.bookingProgress = null; // Clear booking progress
 
-      try {
-        const trackingUrl = `${window.location.origin}/track/${newRideId}`;
-        await sendSMS(
-          customerDetails.phone,
-          SMS_TEMPLATES.rideBooked(trackingUrl)
-        );
-      } catch (smsError) {
-        console.error("SMS failed but ride booked:", smsError);
-      }
+      // try {
+      //   const trackingUrl = `${window.location.origin}/track/${newRideId}`;
+      //   await sendSMS(
+      //     customerDetails.phone,
+      //     SMS_TEMPLATES.rideBooked(trackingUrl)
+      //   );
+      // } catch (smsError) {
+      //   console.error("SMS failed but ride booked:", smsError);
+      // }
 
       setCurrentPage("tracking");
 
@@ -732,6 +802,7 @@ function App() {
                   <label className="block text-sm font-semibold text-neutral-700 mb-3">
                     Full Name
                   </label>
+
                   <input
                     type="text"
                     value={customerDetails.name}
@@ -751,7 +822,27 @@ function App() {
                     </p>
                   )}
                 </div>
-
+                <div>
+                  <label className="block text-sm font-semibold text-neutral-700 mb-3">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={customerDetails.email || ""}
+                    onChange={(e) =>
+                      setCustomerDetails({
+                        ...customerDetails,
+                        email: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
+                    placeholder="your@email.com"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    📧 We'll send ride updates to this email
+                  </p>
+                </div>
                 <div>
                   <label className="block text-sm font-semibold text-neutral-700 mb-3">
                     Phone Number
@@ -1100,6 +1191,13 @@ function App() {
         }}
         minDateTime={new Date(Date.now() + 3600000)}
       />
+      {showTermsModal && (
+        <TermsAndConditionsModal
+          isOpen={showTermsModal}
+          onAccept={handleAcceptTerms}
+          onDecline={handleDeclineTerms}
+        />
+      )}
     </div>
   );
 }

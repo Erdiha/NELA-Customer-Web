@@ -9,10 +9,10 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
   const canProceed = agreedToTerms && agreedToLiability;
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-2xl w-full my-8 shadow-2xl">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4 overflow-y-auto min-h-screen">
+      <div className="bg-white rounded-3xl max-w-2xl w-full my-8 shadow-2xl h-full">
         {/* Header */}
-        <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 rounded-t-3xl">
+        <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 rounded-t-3xl ">
           <div className="flex items-center justify-center mb-2">
             <svg
               className="w-12 h-12"
@@ -35,10 +35,10 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
         </div>
 
         {/* Content */}
-        <div className="p-6 max-h-[60vh] overflow-y-auto">
+        <div className="p-6 max-h-[60vh] overflow-y-auto ">
           {/* Main Terms */}
           <div className="mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center">
+            <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center mt-10 ">
               <span className="text-2xl mr-2">📜</span>
               NELA Ride Service Agreement
             </h3>

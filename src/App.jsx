@@ -923,7 +923,7 @@ function App() {
 
       <div className=" pb-8 px-4 min-h-screen flex items-center justify-center">
         <div className="w-full max-w-md lg:max-w-lg mx-auto">
-          <div className="card-glass p-4 sm:p-6 md:p-8 mt-8">
+          <div className="card-glass p-4 sm:p-6 md:p-8 mt-20">
             <div className="text-start md:text-center md:mb-8 mb-4">
               <h1 className="text-xl md:text-4xl font-bold text-brand mb-3">
                 NELA Rides

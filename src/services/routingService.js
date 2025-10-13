@@ -1,4 +1,4 @@
-const ORS_API_KEY = import.meta.env.VITE_OPEN_ROUTE_API; // ✅ Fixed to match your .env
+const ORS_API_KEY = import.meta.env.VITE_ORS_API_KEY;
 
 function calculateStraightLineDistance(start, end) {
   const R = 3959; // Earth's radius in miles

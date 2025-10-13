@@ -24,7 +24,7 @@ import StripePayment from "./components/StripePayment";
 
 const CURRENT_TERMS_VERSION = "1.0";
 
-// ✅ FIXED: In-memory state management (no localStorage/sessionStorage)
+// In-memory state management (no localStorage/sessionStorage)
 const inMemoryState = {
   activeRideId: null,
   bookingProgress: null,

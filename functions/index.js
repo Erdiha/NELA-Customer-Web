@@ -3,45 +3,55 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { initializeApp } from "firebase-admin/app";
 import { defineSecret } from "firebase-functions/params";
+import { getFirestore } from "firebase-admin/firestore";
 import twilio from "twilio";
+import Stripe from "stripe";
 
+// ---- Init ----
 initializeApp();
+const db = getFirestore();
 
-// Define secrets
+// ---- Secrets ----
 const twilioAccountSid = defineSecret("TWILIO_ACCOUNT_SID");
 const twilioAuthToken = defineSecret("TWILIO_AUTH_TOKEN");
 const twilioPhone = defineSecret("TWILIO_PHONE_NUMBER");
+const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 
-// Manual SMS function (for booking confirmations)
+// ---- Helpers ----
+const stripeClient = () =>
+  new Stripe(stripeSecret.value(), { apiVersion: "2024-06-20" });
+
+const requireAuth = (ctx) => {
+  if (!ctx?.auth?.uid)
+    throw new HttpsError("unauthenticated", "Sign in required");
+  return ctx.auth.uid;
+};
+
+const cents = (amount) => {
+  const v = Math.round(Number(amount) * 100);
+  if (!Number.isInteger(v) || v < 50)
+    throw new HttpsError("invalid-argument", "Bad amount");
+  return v;
+};
+
+// ======================= SMS =======================
 export const sendSMSv2 = onCall(
   { secrets: [twilioAccountSid, twilioAuthToken, twilioPhone] },
-  async (request) => {
-    const { to, message } = request.data;
-
-    if (!to || !message) {
+  async (req) => {
+    requireAuth(req);
+    const { to, message } = req.data || {};
+    if (!to || !message)
       throw new HttpsError("invalid-argument", "Phone and message required");
-    }
-
     const client = twilio(twilioAccountSid.value(), twilioAuthToken.value());
-
-    try {
-      const result = await client.messages.create({
-        body: message,
-        to: to,
-        from: twilioPhone.value(),
-      });
-
-      console.log("✅ SMS sent successfully:", result.sid);
-      return { success: true, messageId: result.sid };
-    } catch (error) {
-      console.error("❌ SMS error:", error);
-      throw new HttpsError("internal", error.message);
-    }
+    const result = await client.messages.create({
+      body: message,
+      to,
+      from: twilioPhone.value(),
+    });
+    return { success: true, messageId: result.sid };
   }
 );
 
-// Auto SMS on ride status change
-// SMS ONLY - Email handled by driver app
 export const onRideStatusChangev2 = onDocumentUpdated(
   {
     document: "rides/{rideId}",
@@ -50,104 +60,245 @@ export const onRideStatusChangev2 = onDocumentUpdated(
   async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
-
-    // Only proceed if status actually changed
-    if (before.status === after.status) {
-      console.log("Status unchanged, skipping notification");
-      return;
-    }
+    if (!before || !after || before.status === after.status) return;
 
     const phone = after.customerPhone;
-    if (!phone) {
-      console.warn("⚠️ No customer phone, skipping SMS");
-      return;
-    }
+    if (!phone) return;
 
     const client = twilio(twilioAccountSid.value(), twilioAuthToken.value());
+    let msg = "",
+      send = false;
 
-    let message = "";
-    let shouldSendSMS = false;
-
-    // SMS Flow: Accepted, Arrived, Completed only
     switch (after.status) {
       case "accepted": {
-        shouldSendSMS = true;
-        const vehicleInfo = after.driverVehicle
-          ? `${after.driverVehicle.year || ""} ${
-              after.driverVehicle.color || ""
-            } ${after.driverVehicle.make || ""} ${
-              after.driverVehicle.model || ""
-            } (${after.driverVehicle.licensePlate || "N/A"})`.trim()
-          : "your ride";
-
-        message = after.isScheduled
+        send = true;
+        const v = after.driverVehicle || {};
+        const vehicleInfo = `${v.year || ""} ${v.color || ""} ${v.make || ""} ${
+          v.model || ""
+        } (${v.licensePlate || "N/A"})`.trim();
+        msg = after.isScheduled
           ? `Your NELA ride is confirmed! ${
               after.driverName || "Your driver"
-            } will pick you up at ${new Date(
+            } at ${new Date(
               after.scheduledDateTime
             ).toLocaleString()}. Vehicle: ${vehicleInfo}`
           : `Your NELA driver ${
-              after.driverName || "is"
-            } on the way! Vehicle: ${vehicleInfo}. ETA: 8 minutes.`;
+              after.driverName || ""
+            } is on the way! Vehicle: ${vehicleInfo}.`;
         break;
       }
-
       case "arrived":
-        shouldSendSMS = true;
-        message = `${
-          after.driverName || "Your driver"
-        } has arrived! Look for the ${after.driverVehicle?.color || ""} ${
-          after.driverVehicle?.make || ""
-        } ${after.driverVehicle?.model || ""}`.trim();
+        send = true;
+        msg = `${after.driverName || "Your driver"} has arrived! Look for the ${
+          after?.driverVehicle?.color || ""
+        } ${after?.driverVehicle?.make || ""} ${
+          after?.driverVehicle?.model || ""
+        }`.trim();
         break;
-
       case "in_progress":
-        // No SMS - customer is in the car
-        console.log("📱 Trip started - No SMS (customer in car)");
-        shouldSendSMS = false;
+        send = false;
         break;
-
       case "completed":
-        shouldSendSMS = true;
-        message = `Trip completed! Thanks for riding with NELA. Total: $${
+        send = true;
+        msg = `Trip completed! Thanks for riding with NELA. Total: $${
           after.estimatedPrice || after.fare || "0.00"
-        }. Check your email for receipt.`;
+        }.`;
         break;
-
       case "cancelled":
-        shouldSendSMS = true;
-        message = `Your NELA ride has been cancelled. ${
-          after.cancelReason || "We apologize for the inconvenience."
-        } Book again anytime!`;
+        send = true;
+        msg = `Your NELA ride has been cancelled. ${
+          after.cancelReason || ""
+        }`.trim();
         break;
-
       case "no_driver_available":
-        shouldSendSMS = true;
-        message = `No drivers available right now. Please try booking again in a few minutes. We apologize for the inconvenience.`;
+        send = true;
+        msg = `No drivers available right now. Please try again soon.`;
         break;
-
       default:
-        console.log(`ℹ️ Status '${after.status}' - No SMS needed`);
         return;
     }
 
-    // Send SMS if needed
-    if (shouldSendSMS && message) {
-      try {
-        const result = await client.messages.create({
-          body: message,
-          to: phone,
-          from: twilioPhone.value(),
-        });
-        console.log(
-          `✅ SMS sent successfully for ${after.status}:`,
-          result.sid
-        );
-        console.log(`   To: ${phone}`);
-      } catch (error) {
-        console.error(`❌ SMS failed for ${after.status}:`, error.message);
-        // Don't throw - log error but don't break the function
-      }
+    if (send && msg)
+      await client.messages.create({
+        body: msg,
+        to: phone,
+        from: twilioPhone.value(),
+      });
+  }
+);
+
+// ======================= STRIPE =======================
+/** Ensure a Stripe Customer for a rider and report if a saved card exists */
+export const ensureStripeCustomer = onCall(
+  { secrets: [stripeSecret] },
+  async (req) => {
+    const uid = requireAuth(req);
+    const { riderUid = uid, email, name } = req.data || {};
+    const stripe = stripeClient();
+
+    const userRef = db.collection("users").doc(riderUid);
+    const snap = await userRef.get();
+    let stripeCustomerId = snap.exists
+      ? snap.data().stripeCustomerId
+      : undefined;
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: email || undefined,
+        name: name || undefined,
+        metadata: { riderUid },
+      });
+      stripeCustomerId = customer.id;
+      await userRef.set({ stripeCustomerId }, { merge: true });
     }
+
+    const pms = await stripe.paymentMethods.list({
+      customer: stripeCustomerId,
+      type: "card",
+      limit: 1,
+    });
+    return { stripeCustomerId, hasDefaultPaymentMethod: pms.data.length > 0 };
+  }
+);
+
+/** Create a manual-capture PaymentIntent (estimate + 15% buffer) */
+export const authorizeRide = onCall(
+  { secrets: [stripeSecret] },
+  async (req) => {
+    const uid = requireAuth(req);
+    const { rideId, riderUid = uid } = req.data || {};
+    if (!rideId) throw new HttpsError("invalid-argument", "rideId required");
+
+    const stripe = stripeClient();
+    const rideRef = db.collection("rides").doc(rideId);
+    const rideSnap = await rideRef.get();
+    if (!rideSnap.exists) throw new HttpsError("not-found", "Ride not found");
+    const ride = rideSnap.data();
+
+    const userSnap = await db.collection("users").doc(riderUid).get();
+    const stripeCustomerId = userSnap.exists
+      ? userSnap.data().stripeCustomerId
+      : undefined;
+    if (!stripeCustomerId)
+      throw new HttpsError("failed-precondition", "No Stripe customer");
+
+    const estimate = Number(ride?.fare?.estimate || ride?.estimatedPrice || 0);
+    const base = Math.round(estimate * 100);
+    const amount = Math.max(50, Math.round(base * 1.15)); // 15% buffer
+
+    const pi = await stripe.paymentIntents.create(
+      {
+        amount,
+        currency: "usd",
+        customer: stripeCustomerId,
+        capture_method: "manual",
+        automatic_payment_methods: { enabled: true },
+        metadata: { rideId, riderUid },
+      },
+      { idempotencyKey: `auth_${rideId}` }
+    );
+
+    await rideRef.set(
+      {
+        payment: {
+          method: "card",
+          paymentIntentId: pi.id,
+          status: "requires_confirmation",
+          amountAuthorized: amount,
+          currency: "usd",
+          isTest: true,
+        },
+      },
+      { merge: true }
+    );
+
+    return { clientSecret: pi.client_secret, paymentIntentId: pi.id, amount };
+  }
+);
+
+/** Legacy alias: create PI directly from amount/email (delegates to Stripe SDK). */
+export const initializePayment = onCall(
+  { secrets: [stripeSecret] },
+  async (req) => {
+    const uid = requireAuth(req);
+    const { amount, customerEmail, rideId } = req.data || {};
+    if (!amount || !customerEmail || !rideId)
+      throw new HttpsError("invalid-argument", "Missing fields");
+
+    const stripe = stripeClient();
+
+    // Ensure customer (by email) or create minimal one:
+    const userRef = db.collection("users").doc(uid);
+    let stripeCustomerId = (await userRef.get()).data()?.stripeCustomerId;
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: customerEmail,
+        metadata: { riderUid: uid },
+      });
+      stripeCustomerId = customer.id;
+      await userRef.set({ stripeCustomerId }, { merge: true });
+    }
+
+    const amountCents = cents(amount);
+    const pi = await stripe.paymentIntents.create(
+      {
+        amount: amountCents,
+        currency: "usd",
+        customer: stripeCustomerId,
+        capture_method: "manual",
+        automatic_payment_methods: { enabled: true },
+        receipt_email: customerEmail,
+        description: `NELA Ride ${rideId}`,
+        metadata: { project: "NELA", rideId, riderUid: uid },
+      },
+      { idempotencyKey: `init_${rideId}` }
+    );
+
+    return {
+      success: true,
+      paymentIntentId: pi.id,
+      clientSecret: pi.client_secret,
+      amount,
+    };
+  }
+);
+
+/** Capture final amount (≤ authorized) */
+export const capturePayment = onCall(
+  { secrets: [stripeSecret] },
+  async (req) => {
+    requireAuth(req);
+    const { paymentIntentId, finalAmount } = req.data || {};
+    if (!paymentIntentId || !finalAmount)
+      throw new HttpsError(
+        "invalid-argument",
+        "Missing payment intent or amount"
+      );
+    const stripe = stripeClient();
+    const result = await stripe.paymentIntents.capture(paymentIntentId, {
+      amount_to_capture: cents(finalAmount),
+    });
+    return {
+      success: true,
+      paymentIntentId: result.id,
+      amount: finalAmount,
+      status: result.status,
+    };
+  }
+);
+
+/** Cancel a PaymentIntent */
+export const cancelPayment = onCall(
+  { secrets: [stripeSecret] },
+  async (req) => {
+    requireAuth(req);
+    const { paymentIntentId } = req.data || {};
+    if (!paymentIntentId)
+      throw new HttpsError("invalid-argument", "Missing payment intent ID");
+    const stripe = stripeClient();
+    const result = await stripe.paymentIntents.cancel(paymentIntentId, {
+      cancellation_reason: "requested_by_customer",
+    });
+    return { success: true, status: result.status, paymentIntentId: result.id };
   }
 );

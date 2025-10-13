@@ -18,6 +18,10 @@ import RideTrackingPage from "./components/RideTrackingPage";
 import TermsAndConditionsModal from "./components/TermsAndConditionsModal";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "./firebase/config";
+import { functions } from "./firebase/config";
+import { httpsCallable } from "firebase/functions";
+import StripePayment from "./components/StripePayment";
+
 const CURRENT_TERMS_VERSION = "1.0";
 
 // ✅ FIXED: In-memory state management (no localStorage/sessionStorage)
@@ -132,6 +136,8 @@ function App() {
   const [showGuestPrompt, setShowGuestPrompt] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
+  const [showCardInput, setShowCardInput] = useState(false);
+  const [cardToken, setCardToken] = useState(null);
 
   // ✅ Track if we're currently restoring state (prevent saving during restoration)
   const isRestoringRef = useRef(false);
@@ -493,7 +499,27 @@ function App() {
   const handlePaymentMethodSelect = (method) => {
     setSelectedPaymentMethod(method);
     setShowPaymentOptions(false);
+
+    // ✅ NEW: If card selected, show card input first
+    if (method.id === "card") {
+      setShowCardInput(true);
+    } else {
+      // For other methods, go straight to booking form
+      setShowBookingForm(true);
+    }
+  };
+
+  const handleCardPaymentSuccess = (paymentData) => {
+    console.log("Card tokenized:", paymentData.token);
+    setCardToken(paymentData.token);
+    setShowCardInput(false);
     setShowBookingForm(true);
+  };
+
+  //card payment error handler
+  const handleCardPaymentError = (error) => {
+    console.error("❌ Card error:", error);
+    alert("Card validation failed. Please check your card details.");
   };
 
   const handleSubmitBooking = async (e) => {
@@ -507,6 +533,44 @@ function App() {
     setIsBooking(true);
 
     try {
+      let paymentIntentId = null;
+      let paymentStatus = "pending";
+
+      // ✅ UPDATED: Use card token if card payment
+      if (selectedPaymentMethod?.id === "card") {
+        if (!cardToken) {
+          throw new Error("Card information missing");
+        }
+
+        console.log("💳 Processing card payment with token...");
+
+        try {
+          const initializePayment = httpsCallable(
+            functions,
+            "initializePayment"
+          );
+          const paymentResult = await initializePayment({
+            amount: priceEstimate.finalPrice,
+            customerEmail: customerDetails.email || user?.email,
+            cardToken: cardToken, // Send card token
+            rideId: "temp_" + Date.now(),
+          });
+
+          if (paymentResult.data.success) {
+            paymentIntentId = paymentResult.data.paymentIntentId;
+            paymentStatus = "authorized";
+            console.log("Card pre-authorized:", paymentIntentId);
+          } else {
+            throw new Error("Payment authorization failed");
+          }
+        } catch (paymentError) {
+          console.error("Payment failed:", paymentError);
+          alert("Payment authorization failed. Please try again.");
+          setIsBooking(false);
+          return;
+        }
+      }
+
       const rideData = {
         customerName: customerDetails.name,
         customerPhone: customerDetails.phone,
@@ -525,25 +589,19 @@ function App() {
         isScheduled: isScheduled,
         scheduledDateTime: isScheduled ? scheduledDateTime : null,
         paymentMethod: selectedPaymentMethod,
+        paymentIntentId: paymentIntentId,
+        paymentStatus: paymentStatus,
         isGuest: !user,
       };
 
       const newRideId = await createRideRequest(rideData);
 
-      // Save ride ID to memory
+      // Clear card token after successful booking
+      setCardToken(null);
+
       setRideId(newRideId);
       inMemoryState.activeRideId = newRideId;
-      inMemoryState.bookingProgress = null; // Clear booking progress
-
-      // try {
-      //   const trackingUrl = `${window.location.origin}/track/${newRideId}`;
-      //   await sendSMS(
-      //     customerDetails.phone,
-      //     SMS_TEMPLATES.rideBooked(trackingUrl)
-      //   );
-      // } catch (smsError) {
-      //   console.error("SMS failed but ride booked:", smsError);
-      // }
+      inMemoryState.bookingProgress = null;
 
       setCurrentPage("tracking");
 
@@ -570,6 +628,30 @@ function App() {
       setIsBooking(false);
     }
   };
+
+  //  Add Card Input Modal to your JSX (add this BEFORE the showBookingForm modal):
+  {
+    showCardInput && (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="w-full max-w-md card-glass p-8">
+          <StripePayment
+            amount={parseFloat(priceEstimate.finalPrice)}
+            onPaymentSuccess={handleCardPaymentSuccess}
+            onPaymentError={handleCardPaymentError}
+          />
+          <button
+            onClick={() => {
+              setShowCardInput(false);
+              setShowPaymentOptions(true);
+            }}
+            className="w-full mt-4 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3 px-4 rounded-2xl transition-all duration-300 font-medium"
+          >
+            ← Back to Payment Options
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     if (
@@ -767,8 +849,8 @@ function App() {
       <FindingDriverModal />
 
       {showPaymentOptions && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="w-full max-w-md card-glass p-8 transform animate-in fade-in zoom-in duration-300">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 md:p-4  p-2">
+          <div className="w-full md:max-w-md card-glass md:p-8 p-4 transform animate-in fade-in zoom-in duration-300">
             <PaymentOptions
               totalFare={parseFloat(priceEstimate.finalPrice)}
               onPaymentSelect={handlePaymentMethodSelect}
@@ -930,7 +1012,7 @@ function App() {
               </h1>
 
               <p className="text-neutral-600 text-sm sm:text-base md:text-lg font-medium">
-                Each Drive Is as Good as The last One.
+                Your Community Non-Profit Rideshare Service
               </p>
               {user ? (
                 <div className="mt-4 px-6 py-3 bg-gradient-to-r from-purple-50 to-amber-50 rounded-2xl inline-block border border-purple-100">

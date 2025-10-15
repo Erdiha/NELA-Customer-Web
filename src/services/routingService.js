@@ -1,10 +1,7 @@
-const ORS_API_KEY =
-  import.meta.env.VITE_ORS_API_KEY ||
-  import.meta.env?.VITE_OPEN_ROUTE_API ||
-  ""; //  to match your .env
+const ORS_API_KEY = import.meta.env.VITE_ORS_API_KEY;
 
 function calculateStraightLineDistance(start, end) {
-  const R = 3959; // Earth's radius in miles
+  const R = 3959;
   const dLat = toRadians(end.lat - start.lat);
   const dLon = toRadians(end.lng - start.lng);
 
@@ -24,57 +21,45 @@ function toRadians(degrees) {
 }
 
 function estimateTimeFromDistance(distance) {
-  return distance * 3 + 5; // 3 min per mile + 5 min buffer
+  return distance * 3 + 5;
 }
 
 export async function getRouteDetails(startCoords, endCoords) {
-  // ✅ Try API first, fallback if it fails
-  if (!ORS_API_KEY) {
-    console.warn("⚠️ No ORS API key, using fallback calculation");
-    const fallbackDistance =
-      calculateStraightLineDistance(startCoords, endCoords) * 1.4;
-    return {
-      distance: fallbackDistance,
-      duration: estimateTimeFromDistance(fallbackDistance),
-      geometry: null,
-    };
-  }
+  console.log("🔍 Getting route:", { startCoords, endCoords });
 
+  // ✅ Use OSRM (free, no key needed) as primary
   try {
-    const response = await fetch(
-      `https://api.openrouteservice.org/v2/directions/driving-car?api_key=${ORS_API_KEY}&start=${startCoords.lng},${startCoords.lat}&end=${endCoords.lng},${endCoords.lat}`,
-      {
-        headers: {
-          "Accept": "application/json, application/geo+json",
-        },
-      }
-    );
+    console.log("🔄 Trying OSRM...");
+    const url = `https://router.project-osrm.org/route/v1/driving/${startCoords.lng},${startCoords.lat};${endCoords.lng},${endCoords.lat}?overview=full&geometries=geojson`;
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
-    }
-
+    const response = await fetch(url);
     const data = await response.json();
 
-    if (data.features && data.features[0]) {
-      const route = data.features[0].properties.segments[0];
-      console.log("✅ Using real route data");
-      return {
-        distance: route.distance / 1609.34, // meters to miles
-        duration: route.duration / 60, // seconds to minutes
-        geometry: data.features[0].geometry,
-      };
-    }
+    console.log("📦 OSRM response:", data);
 
-    throw new Error("No route found");
+    if (data.routes && data.routes[0]) {
+      const route = data.routes[0];
+      const result = {
+        distance: route.distance / 1609.34,
+        duration: route.duration / 60,
+        geometry: route.geometry,
+      };
+      console.log("✅ OSRM route:", result);
+      return result;
+    }
   } catch (error) {
-    console.warn("⚠️ Routing API failed, using fallback:", error.message);
-    const fallbackDistance =
-      calculateStraightLineDistance(startCoords, endCoords) * 1.4;
-    return {
-      distance: fallbackDistance,
-      duration: estimateTimeFromDistance(fallbackDistance),
-      geometry: null,
-    };
+    console.error("❌ OSRM failed:", error);
   }
+
+  // Fallback to straight-line
+  console.warn("⚠️ Using straight-line fallback");
+  const fallbackDistance =
+    calculateStraightLineDistance(startCoords, endCoords) * 1.4;
+  const result = {
+    distance: fallbackDistance,
+    duration: estimateTimeFromDistance(fallbackDistance),
+    geometry: null,
+  };
+  console.log("📍 Fallback result:", result);
+  return result;
 }

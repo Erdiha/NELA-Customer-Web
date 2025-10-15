@@ -138,6 +138,7 @@ function App() {
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const [showCardInput, setShowCardInput] = useState(false);
   const [cardToken, setCardToken] = useState(null);
+  console.log("[ORS] key present?", !!import.meta.env?.VITE_ORS_API_KEY);
 
   // ✅ Track if we're currently restoring state (prevent saving during restoration)
   const isRestoringRef = useRef(false);
@@ -495,25 +496,26 @@ function App() {
     setShowTermsModal(false);
     alert("You must accept the terms and conditions to book a ride.");
   };
-
   const handlePaymentMethodSelect = (method) => {
+    console.log("🔵 Payment method selected:", method);
     setSelectedPaymentMethod(method);
     setShowPaymentOptions(false);
 
     // ✅ NEW: If card selected, show card input first
     if (method.id === "card") {
+      console.log("💳 Showing card input modal");
       setShowCardInput(true);
     } else {
-      // For other methods, go straight to booking form
+      console.log("📝 Showing booking form");
       setShowBookingForm(true);
     }
   };
-
   const handleCardPaymentSuccess = (paymentData) => {
-    console.log("Card tokenized:", paymentData.token);
+    console.log("✅ Card tokenized:", paymentData.token);
     setCardToken(paymentData.token);
     setShowCardInput(false);
     setShowBookingForm(true);
+    // That's it! No payment confirmation needed now
   };
 
   //card payment error handler
@@ -533,48 +535,20 @@ function App() {
     setIsBooking(true);
 
     try {
-      let paymentIntentId = null;
+      // Determine payment status
       let paymentStatus = "pending";
-
-      // ✅ UPDATED: Use card token if card payment
       if (selectedPaymentMethod?.id === "card") {
         if (!cardToken) {
           throw new Error("Card information missing");
         }
-
-        console.log("💳 Processing card payment with token...");
-
-        try {
-          const initializePayment = httpsCallable(
-            functions,
-            "initializePayment"
-          );
-          const paymentResult = await initializePayment({
-            amount: priceEstimate.finalPrice,
-            customerEmail: customerDetails.email || user?.email,
-            cardToken: cardToken, // Send card token
-            rideId: "temp_" + Date.now(),
-          });
-
-          if (paymentResult.data.success) {
-            paymentIntentId = paymentResult.data.paymentIntentId;
-            paymentStatus = "authorized";
-            console.log("Card pre-authorized:", paymentIntentId);
-          } else {
-            throw new Error("Payment authorization failed");
-          }
-        } catch (paymentError) {
-          console.error("Payment failed:", paymentError);
-          alert("Payment authorization failed. Please try again.");
-          setIsBooking(false);
-          return;
-        }
+        paymentStatus = "card_on_file";
+        console.log("💳 Card token ready for later charging:", cardToken);
       }
 
       const rideData = {
         customerName: customerDetails.name,
         customerPhone: customerDetails.phone,
-        customerEmail: user?.email || customerDetails.email || null,
+        customerEmail: customerDetails.email || user?.email || null,
         customerId: user?.uid || null,
         pickupAddress: pickupAddress.address,
         destinationAddress: destinationAddress.address,
@@ -589,11 +563,12 @@ function App() {
         isScheduled: isScheduled,
         scheduledDateTime: isScheduled ? scheduledDateTime : null,
         paymentMethod: selectedPaymentMethod,
-        paymentIntentId: paymentIntentId,
-        paymentStatus: paymentStatus,
+        cardToken: cardToken, // ✅ Store token for charging when trip completes
+        paymentStatus: paymentStatus, // ✅ Mark as card_on_file or pending
         isGuest: !user,
       };
 
+      console.log("🔍 Booking ride with data:", rideData);
       const newRideId = await createRideRequest(rideData);
 
       // Clear card token after successful booking
@@ -628,30 +603,7 @@ function App() {
       setIsBooking(false);
     }
   };
-
   //  Add Card Input Modal to your JSX (add this BEFORE the showBookingForm modal):
-  {
-    showCardInput && (
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="w-full max-w-md card-glass p-8">
-          <StripePayment
-            amount={parseFloat(priceEstimate.finalPrice)}
-            onPaymentSuccess={handleCardPaymentSuccess}
-            onPaymentError={handleCardPaymentError}
-          />
-          <button
-            onClick={() => {
-              setShowCardInput(false);
-              setShowPaymentOptions(true);
-            }}
-            className="w-full mt-4 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3 px-4 rounded-2xl transition-all duration-300 font-medium"
-          >
-            ← Back to Payment Options
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   useEffect(() => {
     if (
@@ -869,6 +821,26 @@ function App() {
           </div>
         </div>
       )}
+      {showCardInput && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-md card-glass p-8">
+            <StripePayment
+              amount={parseFloat(priceEstimate.finalPrice)}
+              onPaymentSuccess={handleCardPaymentSuccess}
+              onPaymentError={handleCardPaymentError}
+            />
+            <button
+              onClick={() => {
+                setShowCardInput(false);
+                setShowPaymentOptions(true);
+              }}
+              className="w-full mt-4 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3 px-4 rounded-2xl transition-all duration-300 font-medium"
+            >
+              ← Back to Payment Options
+            </button>
+          </div>
+        </div>
+      )}
 
       {showBookingForm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1008,7 +980,7 @@ function App() {
           <div className="card-glass p-4 sm:p-6 md:p-8 mt-20">
             <div className="text-start md:text-center md:mb-8 mb-4">
               <h1 className="text-xl md:text-4xl font-bold text-brand mb-3">
-                NELA Rides
+                NELA Ride
               </h1>
 
               <p className="text-neutral-600 text-sm sm:text-base md:text-lg font-medium">

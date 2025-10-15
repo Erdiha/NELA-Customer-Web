@@ -100,11 +100,14 @@ export async function createRideRequest(rideData) {
     const timeoutMs = timeoutMinutes * 60 * 1000;
 
     const completeRideData = {
+      // Customer info
       customerName: rideData.customerName,
       passengerName: rideData.customerName,
       customerPhone: rideData.customerPhone,
       customerEmail: rideData.customerEmail || null,
       customerId: rideData.customerId || null,
+
+      // Location info
       pickupAddress: rideData.pickupAddress,
       pickupLocation: rideData.pickupAddress,
       destinationAddress: rideData.destinationAddress,
@@ -121,23 +124,32 @@ export async function createRideRequest(rideData) {
         longitude: rideData.destinationCoords.lng,
         address: rideData.destinationAddress,
       },
+
+      // Pricing info
       estimatedPrice: rideData.estimatedPrice,
       estimatedFare: rideData.estimatedPrice,
       fare: rideData.estimatedPrice,
       distance: rideData.distance,
       estimatedTime: rideData.estimatedTime,
-      passengerRating: 5.0,
+
+      // ✅ PAYMENT INFO - This was missing!
+      paymentMethod: rideData.paymentMethod || null,
+      cardToken: rideData.cardToken || null,
+      paymentStatus: rideData.paymentStatus || "pending",
+
+      // Ride info
       status: "pending",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       isScheduled: rideData.isScheduled || false,
       scheduledDateTime: rideData.scheduledDateTime || null,
-      paymentMethod: rideData.paymentMethod || null,
       isGuest: rideData.isGuest || false,
+      passengerRating: 5.0,
       pendingTimeoutMinutes: timeoutMinutes,
       timeoutAt: new Date(Date.now() + timeoutMs),
     };
 
+    console.log("🔍 Creating ride with data:", completeRideData);
     const docRef = await addDoc(collection(db, "rides"), completeRideData);
     return docRef.id;
   } catch (error) {

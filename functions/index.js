@@ -17,6 +17,36 @@ const twilioAuthToken = defineSecret("TWILIO_AUTH_TOKEN");
 const twilioPhone = defineSecret("TWILIO_PHONE_NUMBER");
 const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 
+const nelaVenmo = defineSecret("NELA_VENMO_USERNAME");
+
+export const getRidePaymentInfo = onCall(
+  { secrets: [nelaVenmo] },
+  async (req) => {
+    requireAuth(req); // ✅ Only authenticated users
+    const { rideId } = req.data || {};
+
+    if (!rideId) throw new HttpsError("invalid-argument", "Missing rideId");
+
+    // ✅ Verify user is actually part of this ride
+    const rideSnap = await db.collection("rides").doc(rideId).get();
+    if (!rideSnap.exists) throw new HttpsError("not-found", "Ride not found");
+
+    const ride = rideSnap.data();
+    const uid = req.auth.uid;
+
+    // Only rider or driver can see payment info
+    if (ride.customerId !== uid && ride.driverId !== uid) {
+      throw new HttpsError("permission-denied", "Not authorized");
+    }
+
+    return {
+      venmoUsername: nelaVenmo.value(),
+      amount: ride.estimatedPrice,
+      rideId: rideId,
+    };
+  }
+);
+
 // ---- Helpers ----
 const stripeClient = () =>
   new Stripe(stripeSecret.value(), { apiVersion: "2024-06-20" });
@@ -32,6 +62,35 @@ const cents = (amount) => {
   if (!Number.isInteger(v) || v < 50)
     throw new HttpsError("invalid-argument", "Bad amount");
   return v;
+};
+
+// ✅ NEW: Generate payment links for peer-to-peer apps
+const generatePaymentLink = (paymentMethod, amount, rideId) => {
+  const fare = parseFloat(amount);
+  const description = `NELA Ride ${rideId}`;
+
+  switch (paymentMethod.id) {
+    case "venmo": {
+      // Venmo deep link format
+      const venmoNote = encodeURIComponent(
+        `${description} - Thanks for riding!`
+      );
+      return `venmo://paycharge?txn=pay&recipients=nela-driver&amount=${fare}&note=${venmoNote}`;
+    }
+
+    case "cashapp": {
+      // Cash App deep link format
+      const cashNote = encodeURIComponent(description);
+      return `https://cash.app/$NELADriver/${fare}/${cashNote}`;
+    }
+
+    case "paypal":
+      // PayPal.me link format
+      return `https://paypal.me/NELADriver/${fare}`;
+
+    default:
+      return null;
+  }
 };
 
 // ======================= SMS =======================
@@ -55,14 +114,102 @@ export const sendSMSv2 = onCall(
 export const onRideStatusChangev2 = onDocumentUpdated(
   {
     document: "rides/{rideId}",
-    secrets: [twilioAccountSid, twilioAuthToken, twilioPhone],
+    secrets: [twilioAccountSid, twilioAuthToken, twilioPhone, stripeSecret],
   },
+
   async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
-    if (!before || !after || before.status === after.status) return;
+
+    console.log("🔍 Function triggered for ride:", event.params.rideId);
+    console.log(
+      "🔍 Status changed from:",
+      before?.status,
+      "to:",
+      after?.status
+    );
+
+    if (!before || !after || before.status === after.status) {
+      console.log("🔍 Exiting - no status change");
+      return;
+    }
 
     const phone = after.customerPhone;
+    const rideId = event.params.rideId;
+
+    // ✅ PAYMENT PROCESSING WHEN RIDE COMPLETES
+    if (after.status === "completed") {
+      console.log("🔍 Ride completed, checking payment method");
+
+      // Handle card payments
+      if (after.cardToken && after.paymentStatus === "card_on_file") {
+        console.log("💳 Processing card payment for completed ride:", rideId);
+
+        try {
+          const stripe = stripeClient();
+          const charge = await stripe.charges.create({
+            amount: Math.round(
+              parseFloat(after.estimatedPrice || after.fare || 0) * 100
+            ),
+            currency: "usd",
+            source: after.cardToken,
+            description: `NELA Ride ${rideId} - Trip completed`,
+            metadata: {
+              rideId: rideId,
+              customerPhone: phone,
+              pickupAddress: after.pickupAddress || "",
+              destinationAddress: after.destinationAddress || "",
+            },
+          });
+
+          await event.data.after.ref.update({
+            paymentStatus: "charged",
+            stripeChargeId: charge.id,
+            finalAmount: charge.amount / 100,
+            paymentCompletedAt: new Date(),
+          });
+
+          console.log("✅ Card payment successful:", charge.id);
+        } catch (paymentError) {
+          console.error("❌ Card payment failed:", paymentError);
+          await event.data.after.ref.update({
+            paymentStatus: "failed",
+            paymentError: paymentError.message,
+            paymentFailedAt: new Date(),
+          });
+        }
+      }
+
+      // ✅ Handle peer-to-peer payments (Venmo, PayPal, Cash App)
+      else if (
+        after.paymentMethod &&
+        ["venmo", "cashapp", "paypal"].includes(after.paymentMethod.id)
+      ) {
+        console.log(
+          "📱 Generating payment link for:",
+          after.paymentMethod.name
+        );
+
+        const paymentLink = generatePaymentLink(
+          after.paymentMethod,
+          after.estimatedPrice || after.fare,
+          rideId
+        );
+
+        if (paymentLink) {
+          // Update ride with payment link
+          await event.data.after.ref.update({
+            paymentStatus: "link_sent",
+            paymentLink: paymentLink,
+            paymentLinkSentAt: new Date(),
+          });
+
+          console.log("✅ Payment link generated:", paymentLink);
+        }
+      }
+    }
+
+    // ✅ SMS NOTIFICATIONS
     if (!phone) return;
 
     const client = twilio(twilioAccountSid.value(), twilioAuthToken.value());
@@ -98,12 +245,37 @@ export const onRideStatusChangev2 = onDocumentUpdated(
       case "in_progress":
         send = false;
         break;
-      case "completed":
+      case "completed": {
         send = true;
-        msg = `Trip completed! Thanks for riding with NELA. Total: $${
-          after.estimatedPrice || after.fare || "0.00"
-        }.`;
+        const venmoUsername = nelaVenmo.value();
+        const amount = after.estimatedPrice || after.fare || "0.00";
+        const rideId = event.params.rideId;
+
+        const venmoLink = `https://venmo.com/${venmoUsername}?txn=pay&amount=${amount}&note=NELA%20Ride%20${rideId}`;
+
+        // ✅ CUSTOM MESSAGE BASED ON PAYMENT METHOD
+        if (after.paymentMethod?.id === "card") {
+          msg = `Trip completed! Thanks for riding with NELA. Total: $${
+            after.estimatedPrice || after.fare || "0.00"
+          }. Your card has been charged.`;
+        } else if (after.paymentMethod?.id === "cash") {
+          msg = `Trip completed! Thanks for riding with NELA. Total: $${
+            after.estimatedPrice || after.fare || "0.00"
+          }. Cash payment - all set!`;
+        } else if (
+          ["venmo", "cashapp", "paypal"].includes(after.paymentMethod?.id)
+        ) {
+          const paymentLink = after.paymentLink;
+          msg = `Trip completed! Thanks for riding with NELA. Total: $${
+            after.estimatedPrice || after.fare || "0.00"
+          }. Pay with ${after.paymentMethod.name}: ${paymentLink}`;
+        } else {
+          msg = `Trip completed! Thanks for riding with NELA. Total: $${
+            after.estimatedPrice || after.fare || "0.00"
+          }.`;
+        }
         break;
+      }
       case "cancelled":
         send = true;
         msg = `Your NELA ride has been cancelled. ${
@@ -118,17 +290,17 @@ export const onRideStatusChangev2 = onDocumentUpdated(
         return;
     }
 
-    if (send && msg)
+    if (send && msg) {
       await client.messages.create({
         body: msg,
         to: phone,
         from: twilioPhone.value(),
       });
+    }
   }
 );
 
-// ======================= STRIPE =======================
-/** Ensure a Stripe Customer for a rider and report if a saved card exists */
+// ======================= STRIPE FUNCTIONS (keep existing) =======================
 export const ensureStripeCustomer = onCall(
   { secrets: [stripeSecret] },
   async (req) => {
@@ -161,7 +333,6 @@ export const ensureStripeCustomer = onCall(
   }
 );
 
-/** Create a manual-capture PaymentIntent (estimate + 15% buffer) */
 export const authorizeRide = onCall(
   { secrets: [stripeSecret] },
   async (req) => {
@@ -184,7 +355,7 @@ export const authorizeRide = onCall(
 
     const estimate = Number(ride?.fare?.estimate || ride?.estimatedPrice || 0);
     const base = Math.round(estimate * 100);
-    const amount = Math.max(50, Math.round(base * 1.15)); // 15% buffer
+    const amount = Math.max(50, Math.round(base * 1.15));
 
     const pi = await stripe.paymentIntents.create(
       {
@@ -216,7 +387,6 @@ export const authorizeRide = onCall(
   }
 );
 
-/** Legacy alias: create PI directly from amount/email (delegates to Stripe SDK). */
 export const initializePayment = onCall(
   { secrets: [stripeSecret] },
   async (req) => {
@@ -227,7 +397,6 @@ export const initializePayment = onCall(
 
     const stripe = stripeClient();
 
-    // Ensure customer (by email) or create minimal one:
     const userRef = db.collection("users").doc(uid);
     let stripeCustomerId = (await userRef.get()).data()?.stripeCustomerId;
     if (!stripeCustomerId) {
@@ -263,7 +432,6 @@ export const initializePayment = onCall(
   }
 );
 
-/** Capture final amount (≤ authorized) */
 export const capturePayment = onCall(
   { secrets: [stripeSecret] },
   async (req) => {
@@ -287,7 +455,6 @@ export const capturePayment = onCall(
   }
 );
 
-/** Cancel a PaymentIntent */
 export const cancelPayment = onCall(
   { secrets: [stripeSecret] },
   async (req) => {

@@ -14,33 +14,41 @@ const PaymentOptions = ({ totalFare, onPaymentSelect, onBack }) => {
       icon: "💳",
       badge: "Recommended",
       badgeColor: "bg-green-100 text-green-700",
-    },
-    {
-      id: "venmo",
-      name: "Venmo",
-      description: "Pay after trip via Venmo",
-      icon: "📱",
-      username: "@nela-driver",
-    },
-    {
-      id: "cashapp",
-      name: "Cash App",
-      description: "Pay after trip via Cash App",
-      icon: "💵",
-      cashtag: "$NELADriver",
-    },
-    {
-      id: "paypal",
-      name: "PayPal",
-      description: "Pay after trip via PayPal",
-      icon: "🅿️",
-      email: "driver@nela.com",
+      disabled: false,
     },
     {
       id: "cash",
       name: "Cash",
       description: "Pay driver directly",
       icon: "💰",
+      disabled: false,
+    },
+    {
+      id: "venmo",
+      name: "Venmo",
+      description: "Coming soon - check back later!",
+      icon: "📱",
+      badge: "Coming Soon",
+      badgeColor: "bg-gray-100 text-gray-600",
+      disabled: true,
+    },
+    {
+      id: "cashapp",
+      name: "Cash App",
+      description: "Coming soon - check back later!",
+      icon: "💵",
+      badge: "Coming Soon",
+      badgeColor: "bg-gray-100 text-gray-600",
+      disabled: true,
+    },
+    {
+      id: "paypal",
+      name: "PayPal",
+      description: "Coming soon - check back later!",
+      icon: "🅿️",
+      badge: "Coming Soon",
+      badgeColor: "bg-gray-100 text-gray-600",
+      disabled: true,
     },
   ];
 
@@ -73,8 +81,13 @@ const PaymentOptions = ({ totalFare, onPaymentSelect, onBack }) => {
         {paymentMethods.map((method) => (
           <button
             key={method.id}
-            onClick={() => handleMethodSelect(method)}
-            className={`w-full p-5 rounded-2xl border-2 transition-all text-left relative group hover:shadow-lg ${
+            onClick={() => !method.disabled && handleMethodSelect(method)}
+            disabled={method.disabled}
+            className={`w-full p-5 rounded-2xl border-2 transition-all text-left relative group ${
+              method.disabled
+                ? "opacity-50 cursor-not-allowed bg-gray-50"
+                : "hover:shadow-lg"
+            } ${
               selectedMethod?.id === method.id
                 ? "border-blue-500 bg-blue-50 shadow-lg scale-[1.02]"
                 : "border-gray-200 hover:border-blue-300 bg-white"

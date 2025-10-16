@@ -132,9 +132,9 @@ export async function createRideRequest(rideData) {
       distance: rideData.distance,
       estimatedTime: rideData.estimatedTime,
 
-      // ✅ PAYMENT INFO - This was missing!
+      // PAYMENT INFO - PaymentIntent
       paymentMethod: rideData.paymentMethod || null,
-      cardToken: rideData.cardToken || null,
+      paymentIntentId: rideData.paymentIntentId || null,
       paymentStatus: rideData.paymentStatus || "pending",
 
       // Ride info

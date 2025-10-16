@@ -136,80 +136,140 @@ export const onRideStatusChangev2 = onDocumentUpdated(
 
     const phone = after.customerPhone;
     const rideId = event.params.rideId;
-
     // ✅ PAYMENT PROCESSING WHEN RIDE COMPLETES
     if (after.status === "completed") {
-      console.log("🔍 Ride completed, checking payment method");
+      console.log("🔔 Ride completed, checking payment method");
 
-      // Handle card payments
-      if (after.cardToken && after.paymentStatus === "card_on_file") {
-        console.log("💳 Processing card payment for completed ride:", rideId);
+      // Handle card payments - PaymentIntent capture
+      if (after.paymentIntentId && after.paymentStatus === "authorized") {
+        console.log("💳 Capturing PaymentIntent for completed ride:", rideId);
 
         try {
           const stripe = stripeClient();
-          const charge = await stripe.charges.create({
-            amount: Math.round(
-              parseFloat(after.estimatedPrice || after.fare || 0) * 100
-            ),
-            currency: "usd",
-            source: after.cardToken,
-            description: `NELA Ride ${rideId} - Trip completed`,
-            metadata: {
-              rideId: rideId,
-              customerPhone: phone,
-              pickupAddress: after.pickupAddress || "",
-              destinationAddress: after.destinationAddress || "",
-            },
-          });
+          const finalAmount = parseFloat(
+            after.estimatedPrice || after.fare || 0
+          );
+
+          // Capture the pre-authorized payment
+          const paymentIntent = await stripe.paymentIntents.capture(
+            after.paymentIntentId,
+            {
+              amount_to_capture: Math.round(finalAmount * 100),
+            }
+          );
 
           await event.data.after.ref.update({
-            paymentStatus: "charged",
-            stripeChargeId: charge.id,
-            finalAmount: charge.amount / 100,
+            paymentStatus: "captured",
+            stripeChargeId: paymentIntent.latest_charge,
+            finalAmount: finalAmount,
             paymentCompletedAt: new Date(),
           });
 
-          console.log("✅ Card payment successful:", charge.id);
+          console.log("✅ Payment captured successfully:", paymentIntent.id);
         } catch (paymentError) {
-          console.error("❌ Card payment failed:", paymentError);
+          console.error("❌ Payment capture failed:", paymentError);
           await event.data.after.ref.update({
-            paymentStatus: "failed",
+            paymentStatus: "capture_failed",
             paymentError: paymentError.message,
             paymentFailedAt: new Date(),
           });
         }
       }
+    }
+    if (
+      after.status === "completed" &&
+      after.paymentMethod &&
+      ["venmo", "cashapp", "paypal"].includes(after.paymentMethod.id)
+    ) {
+      console.log("📱 Generating payment link for:", after.paymentMethod.name);
 
-      // ✅ Handle peer-to-peer payments (Venmo, PayPal, Cash App)
-      else if (
-        after.paymentMethod &&
-        ["venmo", "cashapp", "paypal"].includes(after.paymentMethod.id)
-      ) {
-        console.log(
-          "📱 Generating payment link for:",
-          after.paymentMethod.name
+      const paymentLink = generatePaymentLink(
+        after.paymentMethod,
+        after.estimatedPrice || after.fare,
+        rideId
+      );
+
+      if (paymentLink) {
+        await event.data.after.ref.update({
+          paymentStatus: "link_sent",
+          paymentLink: paymentLink,
+          paymentLinkSentAt: new Date(),
+        });
+
+        console.log("✅ Payment link generated:", paymentLink);
+      }
+    }
+    // Handle cancellation - release PaymentIntent hold
+    if (
+      after.status === "cancelled" &&
+      after.paymentIntentId &&
+      after.paymentStatus === "authorized"
+    ) {
+      console.log("🔔 Ride cancelled, releasing PaymentIntent hold:", rideId);
+
+      try {
+        const stripe = stripeClient();
+
+        // Cancel the PaymentIntent to release the hold
+        const paymentIntent = await stripe.paymentIntents.cancel(
+          after.paymentIntentId,
+          {
+            cancellation_reason: "requested_by_customer",
+          }
         );
 
-        const paymentLink = generatePaymentLink(
-          after.paymentMethod,
-          after.estimatedPrice || after.fare,
-          rideId
-        );
+        await event.data.after.ref.update({
+          paymentStatus: "cancelled",
+          paymentCancelledAt: new Date(),
+        });
 
-        if (paymentLink) {
-          // Update ride with payment link
-          await event.data.after.ref.update({
-            paymentStatus: "link_sent",
-            paymentLink: paymentLink,
-            paymentLinkSentAt: new Date(),
-          });
-
-          console.log("✅ Payment link generated:", paymentLink);
-        }
+        console.log("✅ Payment hold released successfully");
+      } catch (error) {
+        console.error("❌ Failed to release payment hold:", error);
+        await event.data.after.ref.update({
+          paymentStatus: "cancellation_failed",
+          paymentError: error.message,
+        });
       }
     }
 
-    // ✅ SMS NOTIFICATIONS
+    //  Handle no driver available - release PaymentIntent hold
+    if (
+      after.status === "no_driver_available" &&
+      after.paymentIntentId &&
+      after.paymentStatus === "authorized"
+    ) {
+      console.log(
+        "🔔 No driver available, releasing PaymentIntent hold:",
+        rideId
+      );
+
+      try {
+        const stripe = stripeClient();
+
+        const paymentIntent = await stripe.paymentIntents.cancel(
+          after.paymentIntentId,
+          {
+            cancellation_reason: "requested_by_customer",
+          }
+        );
+
+        await event.data.after.ref.update({
+          paymentStatus: "cancelled",
+          paymentCancelledAt: new Date(),
+        });
+
+        console.log("✅ Payment hold released (no driver)");
+      } catch (error) {
+        console.error("❌ Failed to release payment hold:", error);
+        await event.data.after.ref.update({
+          paymentStatus: "cancellation_failed",
+          paymentError: error.message,
+        });
+      }
+    }
+
+    //  SMS NOTIFICATIONS
     if (!phone) return;
 
     const client = twilio(twilioAccountSid.value(), twilioAuthToken.value());
@@ -281,10 +341,21 @@ export const onRideStatusChangev2 = onDocumentUpdated(
         msg = `Your NELA ride has been cancelled. ${
           after.cancelReason || ""
         }`.trim();
+        // Add note about payment hold release if applicable
+        if (
+          after.paymentMethod?.id === "card" &&
+          after.paymentStatus === "cancelled"
+        ) {
+          msg += " Your payment hold has been released.";
+        }
         break;
       case "no_driver_available":
         send = true;
         msg = `No drivers available right now. Please try again soon.`;
+        // Add note about payment hold release if applicable
+        if (after.paymentMethod?.id === "card" && after.paymentIntentId) {
+          msg += " Your payment hold has been released.";
+        }
         break;
       default:
         return;
@@ -390,22 +461,45 @@ export const authorizeRide = onCall(
 export const initializePayment = onCall(
   { secrets: [stripeSecret] },
   async (req) => {
-    const uid = requireAuth(req);
+    // ✅ Allow both authenticated users and guests
+    const isGuest = !req.auth?.uid;
+    const uid =
+      req.auth?.uid ||
+      `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     const { amount, customerEmail, rideId } = req.data || {};
     if (!amount || !customerEmail || !rideId)
       throw new HttpsError("invalid-argument", "Missing fields");
 
     const stripe = stripeClient();
 
-    const userRef = db.collection("users").doc(uid);
-    let stripeCustomerId = (await userRef.get()).data()?.stripeCustomerId;
+    // ✅ Only try to load existing Stripe customer for authenticated users
+    let stripeCustomerId = null;
+    if (!isGuest) {
+      const userRef = db.collection("users").doc(req.auth.uid);
+      const userDoc = await userRef.get();
+      if (userDoc.exists) {
+        stripeCustomerId = userDoc.data()?.stripeCustomerId;
+      }
+    }
+
+    // ✅ Create new Stripe customer if needed
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
         email: customerEmail,
-        metadata: { riderUid: uid },
+        metadata: {
+          riderUid: uid,
+          isGuest: isGuest,
+          rideId: rideId,
+        },
       });
       stripeCustomerId = customer.id;
-      await userRef.set({ stripeCustomerId }, { merge: true });
+
+      // ✅ Only save to Firestore for authenticated users
+      if (!isGuest) {
+        const userRef = db.collection("users").doc(req.auth.uid);
+        await userRef.set({ stripeCustomerId }, { merge: true });
+      }
     }
 
     const amountCents = cents(amount);

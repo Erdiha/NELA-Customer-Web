@@ -137,7 +137,9 @@ function App() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [hasAcceptedTerms, setHasAcceptedTerms] = useState(false);
   const [showCardInput, setShowCardInput] = useState(false);
-  const [cardToken, setCardToken] = useState(null);
+  const [paymentIntentId, setPaymentIntentId] = useState(null);
+  const [tempRideId, setTempRideId] = useState(null);
+
   console.log("[ORS] key present?", !!import.meta.env?.VITE_ORS_API_KEY);
 
   // ✅ Track if we're currently restoring state (prevent saving during restoration)
@@ -510,12 +512,12 @@ function App() {
       setShowBookingForm(true);
     }
   };
+
   const handleCardPaymentSuccess = (paymentData) => {
-    console.log("✅ Card tokenized:", paymentData.token);
-    setCardToken(paymentData.token);
+    console.log("✅ PaymentIntent authorized:", paymentData.paymentIntentId);
+    setPaymentIntentId(paymentData.paymentIntentId);
     setShowCardInput(false);
     setShowBookingForm(true);
-    // That's it! No payment confirmation needed now
   };
 
   //card payment error handler
@@ -535,14 +537,14 @@ function App() {
     setIsBooking(true);
 
     try {
-      // Determine payment status
+      // Determine payment status// Determine payment status
       let paymentStatus = "pending";
       if (selectedPaymentMethod?.id === "card") {
-        if (!cardToken) {
-          throw new Error("Card information missing");
+        if (!paymentIntentId) {
+          throw new Error("Payment authorization missing");
         }
-        paymentStatus = "card_on_file";
-        console.log("💳 Card token ready for later charging:", cardToken);
+        paymentStatus = "authorized";
+        console.log("💳 PaymentIntent ready for capture:", paymentIntentId);
       }
 
       const rideData = {
@@ -563,16 +565,16 @@ function App() {
         isScheduled: isScheduled,
         scheduledDateTime: isScheduled ? scheduledDateTime : null,
         paymentMethod: selectedPaymentMethod,
-        cardToken: cardToken, // ✅ Store token for charging when trip completes
-        paymentStatus: paymentStatus, // ✅ Mark as card_on_file or pending
+        paymentIntentId: paymentIntentId,
+        paymentStatus: paymentStatus,
         isGuest: !user,
       };
 
-      console.log("🔍 Booking ride with data:", rideData);
+      console.log("🚀 Booking ride with data:", rideData);
       const newRideId = await createRideRequest(rideData);
 
-      // Clear card token after successful booking
-      setCardToken(null);
+      // Clear payment data after successful booking
+      setPaymentIntentId(null);
 
       setRideId(newRideId);
       inMemoryState.activeRideId = newRideId;
@@ -826,6 +828,12 @@ function App() {
           <div className="w-full max-w-md card-glass p-8">
             <StripePayment
               amount={parseFloat(priceEstimate.finalPrice)}
+              customerEmail={
+                customerDetails.email ||
+                user?.email ||
+                `${customerDetails.phone.replace(/\D/g, "")}@nela-guest.com`
+              }
+              rideId={tempRideId || `temp_${Date.now()}`}
               onPaymentSuccess={handleCardPaymentSuccess}
               onPaymentError={handleCardPaymentError}
             />

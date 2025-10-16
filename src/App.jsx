@@ -21,6 +21,8 @@ import { db } from "./firebase/config";
 import { functions } from "./firebase/config";
 import { httpsCallable } from "firebase/functions";
 import StripePayment from "./components/StripePayment";
+import ReviewModal from "./components/ReviewModal";
+import { submitReview, getPendingReviews } from "./services/reviewService";
 
 const CURRENT_TERMS_VERSION = "1.0";
 
@@ -139,6 +141,9 @@ function App() {
   const [showCardInput, setShowCardInput] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState(null);
   const [tempRideId, setTempRideId] = useState(null);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [pendingReview, setPendingReview] = useState(null);
+  const [hasShownReviewReminder, setHasShownReviewReminder] = useState(false);
 
   console.log("[ORS] key present?", !!import.meta.env?.VITE_ORS_API_KEY);
 
@@ -197,6 +202,30 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Check for pending reviews when user logs in
+  useEffect(() => {
+    const checkPendingReviews = async () => {
+      if (user?.uid && !hasShownReviewReminder) {
+        const unreviewed = await getPendingReviews(user.uid);
+        if (unreviewed) {
+          console.log("📝 Found unreviewed ride:", unreviewed.id);
+          setPendingReview(unreviewed);
+        }
+      }
+    };
+
+    checkPendingReviews();
+  }, [user]);
+
+  // Show review reminder once when user tries to book again
+  useEffect(() => {
+    if (pendingReview && !hasShownReviewReminder && priceEstimate && !rideId) {
+      console.log("⏰ Showing one-time review reminder");
+      setShowReviewModal(true);
+      setHasShownReviewReminder(true);
+    }
+  }, [pendingReview, priceEstimate, rideId, hasShownReviewReminder]);
 
   // ✅ Load ride data when rideId changes
   useEffect(() => {
@@ -305,9 +334,22 @@ function App() {
       }
 
       // Clear ride from memory when completed
+      // Clear ride from memory when completed
       if (updatedRide.status === "completed") {
         console.log("✅ Ride completed, clearing from memory");
         inMemoryState.activeRideId = null;
+
+        // Show review modal if user is logged in and hasn't reviewed yet
+        // Show review modal if user is logged in and hasn't reviewed yet
+        if (user && !updatedRide.reviewed) {
+          console.log("📝 Triggering review modal for completed ride");
+          console.log("User exists:", user.uid || user.email);
+          setPendingReview(updatedRide);
+          setTimeout(() => {
+            console.log("⏰ Showing review modal now");
+            setShowReviewModal(true);
+          }, 2000); // Show after 2 seconds
+        }
       }
 
       if (updatedRide.status === "accepted" && showFindingDriver) {
@@ -498,17 +540,18 @@ function App() {
     setShowTermsModal(false);
     alert("You must accept the terms and conditions to book a ride.");
   };
+
   const handlePaymentMethodSelect = (method) => {
     console.log("🔵 Payment method selected:", method);
     setSelectedPaymentMethod(method);
     setShowPaymentOptions(false);
 
-    // ✅ NEW: If card selected, show card input first
+    // ✅ Card payment needs email first
     if (method.id === "card") {
-      console.log("💳 Showing card input modal");
-      setShowCardInput(true);
+      console.log("💳 Card selected - showing booking form first");
+      setShowBookingForm(true); // Get details first, then card
     } else {
-      console.log("📝 Showing booking form");
+      console.log("📋 Showing booking form");
       setShowBookingForm(true);
     }
   };
@@ -534,8 +577,14 @@ function App() {
       return;
     }
 
-    setIsBooking(true);
+    // ✅ If card payment and no card processed yet, show card input
+    if (selectedPaymentMethod?.id === "card" && !paymentIntentId) {
+      setShowBookingForm(false);
+      setShowCardInput(true);
+      return;
+    }
 
+    setIsBooking(true);
     try {
       // Determine payment status// Determine payment status
       let paymentStatus = "pending";
@@ -606,7 +655,29 @@ function App() {
     }
   };
   //  Add Card Input Modal to your JSX (add this BEFORE the showBookingForm modal):
+  const handleReviewSubmit = async (reviewData) => {
+    try {
+      const result = await submitReview(reviewData);
 
+      if (result.success) {
+        console.log("✅ Review submitted successfully");
+        setShowReviewModal(false);
+        setPendingReview(null);
+        alert("Thank you for your feedback!");
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("❌ Review submission failed:", error);
+      alert("Failed to submit review. Please try again.");
+    }
+  };
+
+  const handleReviewSkip = () => {
+    console.log("⏭️ Review skipped");
+    setShowReviewModal(false);
+    // Don't clear pendingReview - will remind them next time they book
+  };
   useEffect(() => {
     if (
       rideData?.status === "no_driver_available" ||
@@ -699,7 +770,27 @@ function App() {
               )}
             </div>
           </div>
-
+          {/* Temporary Debug Button */}
+          {/* <button
+            onClick={() => {
+              console.log("🔍 Debug State:", {
+                showReviewModal,
+                pendingReview,
+                hasShownReviewReminder,
+                user: user?.uid,
+              });
+              setShowReviewModal(true);
+              setPendingReview({
+                id: "test-123",
+                driverName: "Test Driver",
+                customerId: user?.uid || "guest",
+                customerName: user?.name || "Guest",
+              });
+            }}
+            className="px-3 py-1.5 bg-red-500 text-white rounded text-xs"
+          >
+            Test Review
+          </button> */}
           <div className="flex mt-4 space-x-1">
             {[
               { key: "home", label: "Book" },
@@ -860,74 +951,90 @@ function App() {
 
             <form onSubmit={handleSubmitBooking} className="space-y-6">
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-neutral-700 mb-3">
-                    Full Name
-                  </label>
-
-                  <input
-                    type="text"
-                    value={customerDetails.name}
-                    onChange={(e) =>
-                      setCustomerDetails({
-                        ...customerDetails,
-                        name: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
-                    placeholder="Enter your full name"
-                    required
-                  />
-                  {!user && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      💡 No account needed - book as guest!
+                {!user ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-neutral-700 mb-3">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customerDetails.name}
+                        onChange={(e) =>
+                          setCustomerDetails({
+                            ...customerDetails,
+                            name: e.target.value,
+                          })
+                        }
+                        className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
+                        placeholder="Enter your full name"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        💡 No account needed - book as guest!
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-neutral-700 mb-3">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={customerDetails.email || ""}
+                        onChange={(e) =>
+                          setCustomerDetails({
+                            ...customerDetails,
+                            email: e.target.value,
+                          })
+                        }
+                        className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
+                        placeholder="your@email.com"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        📧 We'll send ride updates to this email
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-neutral-700 mb-3">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={customerDetails.phone}
+                        onChange={(e) =>
+                          setCustomerDetails({
+                            ...customerDetails,
+                            phone: e.target.value,
+                          })
+                        }
+                        className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
+                        placeholder="(555) 123-4567"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        📱 We'll send ride updates to this number
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-6 border border-green-200">
+                    <p className="text-sm font-semibold text-gray-700 mb-3">
+                      ✅ Booking as:
                     </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-neutral-700 mb-3">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={customerDetails.email || ""}
-                    onChange={(e) =>
-                      setCustomerDetails({
-                        ...customerDetails,
-                        email: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
-                    placeholder="your@email.com"
-                    required
-                  />
-                  <p className="text-xs text-gray-500 mt-2">
-                    📧 We'll send ride updates to this email
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-neutral-700 mb-3">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    value={customerDetails.phone}
-                    onChange={(e) =>
-                      setCustomerDetails({
-                        ...customerDetails,
-                        phone: e.target.value,
-                      })
-                    }
-                    className="w-full px-4 py-4 bg-neutral-50 border-0 rounded-2xl focus:ring-2 focus:ring-primary focus:bg-white transition-all duration-300 text-neutral-900 placeholder-neutral-500"
-                    placeholder="(555) 123-4567"
-                    required
-                  />
-                  {!user && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      📱 We'll send ride updates to this number
-                    </p>
-                  )}
-                </div>
+                    <div className="space-y-2">
+                      <p className="text-gray-700">
+                        👤 <span className="font-medium">{user.name}</span>
+                      </p>
+                      <p className="text-gray-700">
+                        📧 <span className="font-medium">{user.email}</span>
+                      </p>
+                      <p className="text-gray-700">
+                        📱 <span className="font-medium">{user.phone}</span>
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="bg-gradient-to-r from-neutral-50 to-neutral-100 rounded-2xl p-6">
@@ -1258,6 +1365,14 @@ function App() {
           isOpen={showTermsModal}
           onAccept={handleAcceptTerms}
           onDecline={handleDeclineTerms}
+        />
+      )}
+
+      {showReviewModal && pendingReview && (
+        <ReviewModal
+          rideData={pendingReview}
+          onSubmit={handleReviewSubmit}
+          onSkip={handleReviewSkip}
         />
       )}
     </div>

@@ -30,8 +30,7 @@ const MapView = ({ pickup, destination, driverLocation }) => {
     if (routeLayerRef.current) {
       mapInstance.current.removeLayer(routeLayerRef.current);
     }
-
-    // Fetch actual driving route from OpenRouteService (free)
+    // Fetch actual driving route from OSRM
     const fetchRoute = async () => {
       setRouteLoading(true);
       try {
@@ -47,46 +46,35 @@ const MapView = ({ pickup, destination, driverLocation }) => {
             coord[0],
           ]);
 
-          // Draw route with multiple layers for effect
+          // Professional multi-layer route (Uber-style)
           const routeGroup = L.layerGroup();
 
-          // Bottom shadow layer
+          // Bottom glow/shadow
           L.polyline(coordinates, {
             color: "#1e40af",
-            weight: 10,
-            opacity: 0.2,
-            smoothFactor: 1,
-          }).addTo(routeGroup);
-
-          // Main route layer
-          L.polyline(coordinates, {
-            color: "#3b82f6",
-            weight: 6,
-            opacity: 0.9,
+            weight: 12,
+            opacity: 0.15,
             smoothFactor: 1,
             lineJoin: "round",
             lineCap: "round",
           }).addTo(routeGroup);
 
-          // Top highlight layer
+          // Main route line (NELA blue)
           L.polyline(coordinates, {
-            color: "#60a5fa",
-            weight: 3,
-            opacity: 0.6,
+            color: "#3b82f6",
+            weight: 6,
+            opacity: 1,
             smoothFactor: 1,
-            dashArray: "10, 15",
             lineJoin: "round",
             lineCap: "round",
           }).addTo(routeGroup);
 
           routeLayerRef.current = routeGroup;
           routeGroup.addTo(mapInstance.current);
-
           setRouteLoading(false);
         }
       } catch (error) {
         console.error("Error fetching route:", error);
-        // Fallback to straight line if route fetch fails
         const straightLine = L.polyline(
           [
             [pickup.lat, pickup.lng],
@@ -107,142 +95,130 @@ const MapView = ({ pickup, destination, driverLocation }) => {
 
     fetchRoute();
 
-    // Pickup marker
+    // Pickup marker (green - professional size)
     const pickupIcon = L.divIcon({
       html: `
-        <div style="position: relative;">
-          <div style="
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            width: 40px;
-            height: 40px;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            border: 3px solid white;
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          ">
-            <div style="transform: rotate(45deg); font-size: 20px;">📍</div>
-          </div>
-          <div style="
-            position: absolute;
-            top: 45px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            white-space: nowrap;
-            font-size: 11px;
-            font-weight: 600;
-            color: #059669;
-          ">Pickup</div>
-        </div>
-      `,
+    <div style="
+      position: relative;
+      width: 28px;
+      height: 28px;
+    ">
+      <div style="
+        width: 28px;
+        height: 28px;
+        background: #10b981;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+        <div style="
+          width: 8px;
+          height: 8px;
+          background: white;
+          border-radius: 50%;
+        "></div>
+      </div>
+    </div>
+  `,
       className: "",
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
     });
     markersRef.current.pickup = L.marker([pickup.lat, pickup.lng], {
       icon: pickupIcon,
     }).addTo(mapInstance.current);
 
-    // Destination marker
+    // Destination marker (red square - Uber style)
     const destIcon = L.divIcon({
       html: `
-        <div style="position: relative;">
-          <div style="
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            width: 40px;
-            height: 40px;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            border: 3px solid white;
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          ">
-            <div style="transform: rotate(45deg); font-size: 20px;">🎯</div>
-          </div>
-          <div style="
-            position: absolute;
-            top: 45px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            white-space: nowrap;
-            font-size: 11px;
-            font-weight: 600;
-            color: #dc2626;
-          ">Destination</div>
-        </div>
-      `,
+    <div style="
+      position: relative;
+      width: 28px;
+      height: 28px;
+    ">
+      <div style="
+        width: 28px;
+        height: 28px;
+        background: #ef4444;
+        border: 3px solid white;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      ">
+        <div style="
+          width: 8px;
+          height: 8px;
+          background: white;
+          border-radius: 1px;
+        "></div>
+      </div>
+    </div>
+  `,
       className: "",
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
     });
     markersRef.current.destination = L.marker(
       [destination.lat, destination.lng],
       { icon: destIcon }
     ).addTo(mapInstance.current);
 
-    // Driver marker
+    // Driver marker (car icon - slightly larger, NELA blue)
     if (driverLocation) {
       const driverIcon = L.divIcon({
         html: `
-          <div style="position: relative;">
-            <div style="
-              background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-              width: 48px;
-              height: 48px;
-              border-radius: 50%;
-              border: 4px solid white;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-size: 24px;
-              box-shadow: 0 4px 16px rgba(59, 130, 246, 0.5);
-              animation: pulse 2s infinite;
-            ">🚗</div>
-            <div style="
-              position: absolute;
-              top: 55px;
-              left: 50%;
-              transform: translateX(-50%);
-              background: #3b82f6;
-              color: white;
-              padding: 4px 10px;
-              border-radius: 4px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-              white-space: nowrap;
-              font-size: 11px;
-              font-weight: 700;
-            ">Your Driver</div>
-            <style>
-              @keyframes pulse {
-                0%, 100% { transform: scale(1); }
-                50% { transform: scale(1.1); }
-              }
-            </style>
-          </div>
-        `,
+      <div style="
+        position: relative;
+        width: 36px;
+        height: 36px;
+      ">
+        <div style="
+          width: 36px;
+          height: 36px;
+          background: #3b82f6;
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 3px 12px rgba(59,130,246,0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+        ">🚗</div>
+        <div style="
+          position: absolute;
+          bottom: -4px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 20px;
+          height: 20px;
+          background: #3b82f6;
+          opacity: 0.3;
+          border-radius: 50%;
+          animation: pulse 2s infinite;
+        "></div>
+      </div>
+      <style>
+        @keyframes pulse {
+          0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.3; }
+          50% { transform: translateX(-50%) scale(1.5); opacity: 0; }
+        }
+      </style>
+    `,
         className: "",
-        iconSize: [48, 48],
-        iconAnchor: [24, 24],
+        iconSize: [8, 8],
+        iconAnchor: [10, 10],
       });
       markersRef.current.driver = L.marker(
         [driverLocation.latitude, driverLocation.longitude],
         { icon: driverIcon }
       ).addTo(mapInstance.current);
     }
-
-    // Fit bounds
+    // Fit bounds with proper padding
     const bounds = L.latLngBounds([
       [pickup.lat, pickup.lng],
       [destination.lat, destination.lng],
@@ -251,9 +227,11 @@ const MapView = ({ pickup, destination, driverLocation }) => {
       bounds.extend([driverLocation.latitude, driverLocation.longitude]);
     }
     mapInstance.current.fitBounds(bounds, {
-      padding: [80, 80],
-      maxZoom: 15,
+      padding: [30, 30],
+      animate: true,
     });
+
+    // Fetch actual driving route from OpenRouteService (free)
   }, [pickup, destination, driverLocation]);
 
   return (

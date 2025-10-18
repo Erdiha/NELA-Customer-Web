@@ -5,17 +5,14 @@ import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyCIJfIlDJvx_tomr2hQnGlpgMB84G3KYlI",
+  authDomain: "personal-rideshare.firebaseapp.com",
+  projectId: "personal-rideshare",
+  storageBucket: "personal-rideshare.firebasestorage.app",
+  messagingSenderId: "1071735058811",
+  appId: "1:1071735058811:web:cf71d53fd684a25d94cdde",
+  measurementId: "G-QC0604B68G",
 };
-
-if (!firebaseConfig.apiKey) {
-  throw new Error("Missing Firebase env vars (VITE_FIREBASE_*)");
-}
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 

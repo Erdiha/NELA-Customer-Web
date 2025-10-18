@@ -4,7 +4,7 @@ const PRICING_CONFIG = {
   baseFare: 3.5,
   perMile: 2.25,
   perMinute: 0.35,
-  discountPercent: 15,
+  discountPercent: 20,
   surgePricing: 1.0,
 };
 

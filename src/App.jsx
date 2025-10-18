@@ -13,7 +13,7 @@ import ScheduleCalendar from "./components/ScheduleCalender";
 import PaymentOptions from "./components/PaymentOptions";
 import AccountSystem from "./components/AccountSystem";
 import AccountDashboard from "./components/AccountDashboard";
-import { sendSMS, SMS_TEMPLATES } from "./services/smsServices";
+// import { sendSMS, SMS_TEMPLATES } from "./services/smsServices";
 import RideTrackingPage from "./components/RideTrackingPage";
 import TermsAndConditionsModal from "./components/TermsAndConditionsModal";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
@@ -23,6 +23,7 @@ import { httpsCallable } from "firebase/functions";
 import StripePayment from "./components/StripePayment";
 import ReviewModal from "./components/ReviewModal";
 import { submitReview, getPendingReviews } from "./services/reviewService";
+import OnboardingSlider from "./components/OnboardingSlider";
 
 const CURRENT_TERMS_VERSION = "1.0";
 
@@ -142,6 +143,12 @@ function App() {
   const [paymentIntentId, setPaymentIntentId] = useState(null);
   const [tempRideId, setTempRideId] = useState(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  console.log("🚀 App component loaded");
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  console.log("👀 Initial showOnboarding:", showOnboarding);
+
+  const [showAbout, setShowAbout] = useState(false);
   const [pendingReview, setPendingReview] = useState(null);
   const [hasShownReviewReminder, setHasShownReviewReminder] = useState(false);
 
@@ -202,6 +209,36 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // Replace the onboarding useEffect with TWO separate ones:
+
+  // 1. Check on initial mount (for guests and logged-out users)
+  useEffect(() => {
+    const cookieCheck = document.cookie.includes("nela_onboarding=true");
+    if (!cookieCheck) {
+      setShowOnboarding(true);
+    }
+  }, []); // Empty dependency - runs once on mount
+
+  // 2. Check when user logs in
+  useEffect(() => {
+    if (user && !user.hasSeenOnboarding) {
+      const cookieCheck = document.cookie.includes("nela_onboarding=true");
+      if (!cookieCheck) {
+        setShowOnboarding(true);
+      }
+    }
+  }, [user]); // Runs when user changes
+
+  // In App.jsx, right after the onboarding useEffect, add:
+  useEffect(() => {
+    console.log("🔍 Debug Onboarding:", {
+      showOnboarding,
+      user: user?.email || "guest",
+      userHasSeen: user?.hasSeenOnboarding,
+      cookie: document.cookie.includes("nela_onboarding=true"),
+    });
+  }, [showOnboarding, user]);
 
   // Check for pending reviews when user logs in
   useEffect(() => {
@@ -678,6 +715,31 @@ function App() {
     setShowReviewModal(false);
     // Don't clear pendingReview - will remind them next time they book
   };
+
+  const handleOnboardingComplete = async () => {
+    // Set cookie for guests
+    document.cookie = "nela_onboarding=true; max-age=31536000; path=/";
+
+    // If logged in, save to Firebase
+    if (user?.uid) {
+      try {
+        await updateDoc(doc(db, "users", user.uid), {
+          hasSeenOnboarding: true,
+          onboardingCompletedAt: new Date(),
+        });
+        console.log("✅ Onboarding saved to user profile");
+      } catch (error) {
+        console.error("Error saving onboarding status:", error);
+      }
+    }
+
+    setShowOnboarding(false);
+  };
+
+  const handleAboutClose = () => {
+    setShowAbout(false);
+  };
+
   useEffect(() => {
     if (
       rideData?.status === "no_driver_available" ||
@@ -739,6 +801,15 @@ function App() {
                 <span className="text-white text-lg font-bold">N</span>
               </div>
               <span className="text-xl text-brand">NELA</span>
+            </button>
+            <button
+              onClick={() => {
+                setShowOnboarding(true); // Show directly without cookie check
+              }}
+              className="ml-2 min-w-6 h-6 rounded-full hover:bg-white hover:text-black text-black  flex items-center justify-center transition-all text-sm  p-4 "
+              title="How it works"
+            >
+              ℹ️ <span className="hidden md:flex pl-2"> How It Works?</span>
             </button>
 
             <div className="flex items-center space-x-3">
@@ -887,10 +958,13 @@ function App() {
       />
     );
   }
+  if (currentPage === "about") {
+    return <OnboardingSlider onComplete={() => setCurrentPage("home")} />;
+  }
 
   return (
     <div className="min-h-screen bg-light">
-      <NavigationHeader />
+      {!showOnboarding && <NavigationHeader />}
       <FindingDriverModal />
 
       {showPaymentOptions && (
@@ -1276,7 +1350,7 @@ function App() {
                     </div>
                     <div className="inline-flex items-center px-4 py-2 bg-emerald-200 rounded-full">
                       <span className="text-emerald-800 font-semibold md:text-sm text-xs">
-                        💰 You save ${priceEstimate.savings} (15% off)
+                        💰 You save ${priceEstimate.savings} (20% off)
                       </span>
                     </div>
                   </div>
@@ -1360,6 +1434,8 @@ function App() {
         }}
         minDateTime={new Date(Date.now() + 3600000)}
       />
+
+      {/* Review Modal - for pending reviews */}
       {showTermsModal && (
         <TermsAndConditionsModal
           isOpen={showTermsModal}
@@ -1367,13 +1443,16 @@ function App() {
           onDecline={handleDeclineTerms}
         />
       )}
-
+      {/* review */}
       {showReviewModal && pendingReview && (
         <ReviewModal
           rideData={pendingReview}
           onSubmit={handleReviewSubmit}
           onSkip={handleReviewSkip}
         />
+      )}
+      {showOnboarding && (
+        <OnboardingSlider onComplete={handleOnboardingComplete} />
       )}
     </div>
   );

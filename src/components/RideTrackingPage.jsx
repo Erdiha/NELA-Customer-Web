@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from "react";
 import MapView from "./MapView";
+import { updateRideStatus } from "../services/firebaseService";
 
 const RideTrackingPage = ({
   rideData,
@@ -27,7 +28,6 @@ const RideTrackingPage = ({
     }
   }, [rideData?.driverLocation, pickupAddress]);
 
-  // ✅ NEW: Countdown timer for pending rides
   useEffect(() => {
     if (rideData?.status === "pending" && rideData?.timeoutAt) {
       const updateCountdown = () => {
@@ -107,7 +107,7 @@ const RideTrackingPage = ({
 
           return {
             title: "Finding Driver",
-            subtitle: `Looking for driver for your ${timeStr} ride`,
+            subtitle: `For your ${timeStr} ride`,
             color: "purple",
             icon: "🔍",
             showTimeout: true,
@@ -115,7 +115,7 @@ const RideTrackingPage = ({
         }
         return {
           title: "Finding Driver",
-          subtitle: "Searching for nearby drivers...",
+          subtitle: "Searching nearby...",
           color: "blue",
           icon: "🔍",
           showTimeout: true,
@@ -126,25 +126,23 @@ const RideTrackingPage = ({
         return {
           title: "No Drivers Available",
           subtitle: isScheduled
-            ? "No drivers available for this time slot. Please try a different time."
-            : "All drivers are busy right now. Please try again in a few minutes.",
+            ? "Try a different time"
+            : "Try again in a few minutes",
           color: "red",
           icon: "❌",
           isError: true,
         };
 
       case "accepted":
-        // ✅ FIXED: Check if scheduled and time hasn't arrived yet
         if (isScheduled && scheduledDateTime) {
           const rideTime = new Date(scheduledDateTime);
           const now = new Date();
           const hoursUntil = (rideTime - now) / (1000 * 60 * 60);
 
           if (hoursUntil > 1) {
-            // More than 1 hour away - driver confirmed but not heading yet
             return {
               title: "Driver Confirmed",
-              subtitle: `See you at ${rideTime.toLocaleString("en-US", {
+              subtitle: `See you ${rideTime.toLocaleString("en-US", {
                 month: "short",
                 day: "numeric",
                 hour: "numeric",
@@ -152,33 +150,22 @@ const RideTrackingPage = ({
               })}`,
               color: "purple",
               icon: "✅",
-              hideETA: true, // Don't show ETA yet
-            };
-          } else {
-            // Within 1 hour - driver should be heading soon
-            return {
-              title: "Driver Heading to Pickup",
-              subtitle: "Your driver will be there soon",
-              color: "blue",
-              icon: "🚗",
-              showETA: true,
+              hideMap: true,
             };
           }
         }
 
-        // Immediate ride - driver on the way now
         return {
           title: "Driver On The Way",
-          subtitle: `Arriving in ${eta || "..."}  min`,
+          subtitle: `Arriving in ${eta || "..."} min`,
           color: "blue",
           icon: "🚗",
-          showETA: true,
         };
 
       case "arrived":
         return {
           title: "Driver Has Arrived",
-          subtitle: "Look for your driver outside",
+          subtitle: "Look outside",
           color: "orange",
           icon: "📍",
         };
@@ -194,7 +181,7 @@ const RideTrackingPage = ({
       case "completed":
         return {
           title: "Trip Complete",
-          subtitle: "Thanks for riding with NELA",
+          subtitle: "Thanks for riding!",
           color: "green",
           icon: "✅",
         };
@@ -212,10 +199,10 @@ const RideTrackingPage = ({
   const statusDisplay = getStatusDisplay();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 overflow-y-auto">
-      {/* ✅ Status Header with Countdown */}
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Status Header - Compact */}
       <div
-        className={`bg-gradient-to-r ${
+        className={`flex-shrink-0 bg-gradient-to-r ${
           statusDisplay.color === "blue"
             ? "from-blue-500 to-blue-600"
             : statusDisplay.color === "green"
@@ -224,263 +211,70 @@ const RideTrackingPage = ({
             ? "from-orange-500 to-orange-600"
             : statusDisplay.color === "purple"
             ? "from-purple-500 to-purple-600"
-            : statusDisplay.color === "yellow"
-            ? "from-yellow-500 to-yellow-600"
             : statusDisplay.color === "red"
             ? "from-red-500 to-red-600"
             : "from-gray-500 to-gray-600"
-        } text-white px-4 sm:px-6 py-4 sm:py-6 shadow-lg`}
+        } text-white shadow-md`}
       >
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center">
-            <div className="text-3xl sm:text-4xl mb-2">
-              {statusDisplay.icon}
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{statusDisplay.icon}</span>
+              <div>
+                <h1 className="text-base font-bold">{statusDisplay.title}</h1>
+                <p className="text-xs text-white/90">
+                  {statusDisplay.subtitle}
+                </p>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold mb-1">
-              {statusDisplay.title}
-            </div>
-            <div className="text-xs sm:text-sm opacity-90">
-              {statusDisplay.subtitle}
-            </div>
-
-            {/* ✅ NEW: Show countdown for pending rides */}
-            {statusDisplay.showTimeout && timeRemaining && (
-              <div className="mt-3 bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 inline-block">
-                <div className="text-xs opacity-90 mb-1">Time remaining</div>
-                <div className="text-2xl font-bold font-mono">
-                  {timeRemaining}
-                </div>
+            {timeRemaining && statusDisplay.showTimeout && (
+              <div className="text-right">
+                <div className="text-xl font-bold">{timeRemaining}</div>
+                <div className="text-[10px] text-white/80">left</div>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 pb-24">
-        {/* Error State - No Driver Available */}
-        {statusDisplay.isError && (
-          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl mb-4 border-2 border-red-200">
-            <div className="text-center mb-4">
-              <div className="text-4xl sm:text-5xl mb-3">😔</div>
-              <h3 className="text-lg sm:text-xl font-bold text-red-800 mb-2">
-                Sorry About That!
-              </h3>
-              <p className="text-sm sm:text-base text-red-700 mb-3">
-                {statusDisplay.subtitle}
-              </p>
-            </div>
-
-            <button
-              onClick={onBookAnother}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 sm:py-4 rounded-2xl font-bold text-base sm:text-lg hover:from-blue-700 hover:to-blue-800 transition shadow-lg"
-            >
-              Try Booking Again
-            </button>
-          </div>
-        )}
-
-        {/* Normal Flow - Only show if not error */}
-        {!statusDisplay.isError && (
-          <>
-            {/* Driver Card - Only when driver assigned */}
-            {rideData?.driverName && (
-              <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl mb-4 border-2 border-blue-100">
-                <div className="flex items-center gap-3 sm:gap-4 mb-4">
-                  {rideData.driverPhotoURL ? (
-                    <img
-                      src={rideData.driverPhotoURL}
-                      alt={rideData.driverName}
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full object-cover border-4 border-blue-500 shadow-lg flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-blue-500 text-white flex items-center justify-center text-2xl sm:text-3xl font-bold shadow-lg flex-shrink-0">
-                      {rideData.driverName.charAt(0)}
-                    </div>
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs sm:text-sm text-gray-500 font-medium mb-1">
-                      YOUR DRIVER
-                    </div>
-                    <div className="font-bold text-lg sm:text-xl text-gray-900 truncate">
-                      {rideData.driverName}
-                    </div>
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-yellow-500 text-sm">⭐</span>
-                      <span className="text-xs sm:text-sm font-semibold">
-                        5.0
-                      </span>
-                      <span className="text-xs text-gray-500">(Driver)</span>
-                    </div>
-                  </div>
-
-                  {rideData.driverPhone && (
-                    <a
-                      href={`tel:${rideData.driverPhone}`}
-                      className="w-12 h-12 sm:w-14 sm:h-14 bg-green-500 rounded-full flex items-center justify-center text-white hover:bg-green-600 transition shadow-lg flex-shrink-0"
-                    >
-                      <svg
-                        className="w-6 h-6 sm:w-7 sm:h-7"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                        />
-                      </svg>
-                    </a>
-                  )}
-                </div>
-
-                {/* Vehicle Info */}
-                {rideData.driverVehicle && (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-3 sm:p-4 space-y-2">
-                    <div className="flex justify-between items-center gap-2">
-                      <span className="text-xs sm:text-sm text-gray-600 font-medium">
-                        Vehicle
-                      </span>
-                      <span className="font-semibold text-gray-900 text-xs sm:text-base text-right">
-                        {rideData.driverVehicle.year}{" "}
-                        {rideData.driverVehicle.make}{" "}
-                        {rideData.driverVehicle.model}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center gap-2">
-                      <span className="text-xs sm:text-sm text-gray-600 font-medium">
-                        Color
-                      </span>
-                      <span className="font-semibold text-gray-900 text-xs sm:text-base">
-                        {rideData.driverVehicle.color}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center gap-2">
-                      <span className="text-xs sm:text-sm text-gray-600 font-medium">
-                        License Plate
-                      </span>
-                      <span className="font-bold text-lg sm:text-xl text-blue-600">
-                        {rideData.driverVehicle.licensePlate}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Live ETA - Only show when appropriate */}
-                {statusDisplay.showETA &&
-                  eta &&
-                  rideData.status === "accepted" && (
-                    <div className="mt-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-3 sm:p-4 border-2 border-green-200">
-                      <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
-                        <svg
-                          className="w-5 h-5 sm:w-6 sm:h-6 text-green-600"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        <span className="text-xl sm:text-2xl font-bold text-green-700">
-                          {eta} min
-                        </span>
-                        <span className="text-gray-600">•</span>
-                        <span className="text-base sm:text-lg text-gray-700">
-                          {distance} miles away
-                        </span>
-                      </div>
-                    </div>
-                  )}
-              </div>
-            )}
-
-            {/* Trip Route Card */}
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg mb-4">
-              <div className="text-xs sm:text-sm font-bold text-gray-500 mb-4 uppercase tracking-wide">
-                Trip Route
-              </div>
-
-              {/* Pickup */}
-              <div className="flex gap-3 sm:gap-4 mb-4">
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <div className="w-3 h-3 sm:w-4 sm:h-4 bg-green-500 rounded-full shadow"></div>
-                  <div className="w-0.5 flex-1 bg-gray-300 my-1"></div>
-                </div>
-                <div className="flex-1 pb-4 min-w-0">
-                  <div className="text-xs text-gray-500 font-semibold mb-1">
-                    PICKUP
-                  </div>
-                  <div className="text-xs sm:text-sm font-medium text-gray-900 break-words">
-                    {pickupAddress?.address}
-                  </div>
-                </div>
-              </div>
-
-              {/* Destination */}
-              <div className="flex gap-3 sm:gap-4">
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <div className="w-3 h-3 sm:w-4 sm:h-4 bg-red-500 rounded-sm shadow"></div>
+      {/* Content Area */}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-4xl mx-auto p-3 space-y-3">
+          {/* Driver Card - Compact */}
+          {rideData?.driverName && (
+            <div className="bg-white rounded-xl p-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-xl flex-shrink-0">
+                  👤
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs text-gray-500 font-semibold mb-1">
-                    DESTINATION
-                  </div>
-                  <div className="text-xs sm:text-sm font-medium text-gray-900 break-words">
-                    {destinationAddress?.address}
-                  </div>
+                  <div className="font-bold text-sm">{rideData.driverName}</div>
+                  {rideData.driverVehicle && (
+                    <div className="text-xs text-gray-600 truncate">
+                      {rideData.driverVehicle.color}{" "}
+                      {rideData.driverVehicle.make} •{" "}
+                      {rideData.driverVehicle.licensePlate}
+                    </div>
+                  )}
                 </div>
+                {eta && !statusDisplay.hideMap && (
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-green-600">
+                      {eta}
+                    </div>
+                    <div className="text-[10px] text-gray-600">min</div>
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            {/* Trip Stats */}
-            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-lg mb-4">
-              <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                <div className="text-center">
-                  <div className="text-xs text-gray-500 font-semibold mb-1">
-                    DISTANCE
-                  </div>
-                  <div className="text-lg sm:text-2xl font-bold text-gray-900">
-                    {priceEstimate?.distance || rideData?.distance || "--"}
-                    <span className="text-xs sm:text-sm text-gray-600 ml-0.5 sm:ml-1">
-                      mi
-                    </span>
-                  </div>
-                </div>
-                <div className="text-center border-l border-r border-gray-200">
-                  <div className="text-xs text-gray-500 font-semibold mb-1">
-                    DURATION
-                  </div>
-                  <div className="text-lg sm:text-2xl font-bold text-gray-900">
-                    {priceEstimate?.estimatedTime ||
-                      rideData?.estimatedTime ||
-                      "--"}
-                    <span className="text-xs sm:text-sm text-gray-600 ml-0.5 sm:ml-1">
-                      min
-                    </span>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-xs text-gray-500 font-semibold mb-1">
-                    FARE
-                  </div>
-                  <div className="text-lg sm:text-2xl font-bold text-green-600">
-                    $
-                    {priceEstimate?.finalPrice ||
-                      rideData?.estimatedPrice ||
-                      "--"}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Live Map - Only show when driver assigned and not too early */}
-            {pickupAddress && destinationAddress && !statusDisplay.hideETA && (
+          {/* Map - BIGGER (was 300px, now 450px) */}
+          {pickupAddress && destinationAddress && !statusDisplay.hideMap ? (
+            <div
+              className="bg-white rounded-xl overflow-hidden shadow-sm"
+              style={{ height: "450px" }}
+            >
               <MapView
                 pickup={{ lat: pickupAddress.lat, lng: pickupAddress.lng }}
                 destination={{
@@ -488,20 +282,182 @@ const RideTrackingPage = ({
                   lng: destinationAddress.lng,
                 }}
                 driverLocation={rideData?.driverLocation}
+                autoFocusDelay={5000} // 5 second delay before auto-refocusing
               />
-            )}
+            </div>
+          ) : (
+            <div
+              className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-12 text-center"
+              style={{
+                height: "450px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+              }}
+            >
+              <div className="text-6xl mb-4">{statusDisplay.icon}</div>
+              <p className="text-gray-700 font-medium">
+                {statusDisplay.subtitle}
+              </p>
+            </div>
+          )}
 
-            {/* Action Button */}
-            {rideData?.status === "completed" && (
-              <button
-                onClick={onBookAnother}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 sm:py-4 rounded-2xl font-bold text-base sm:text-lg hover:from-blue-700 hover:to-blue-800 transition shadow-lg mt-4"
+          {/* Trip Stats - Compact */}
+          <div className="bg-white rounded-xl p-3 shadow-sm">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center">
+                <div className="text-[10px] text-gray-500 font-bold mb-1">
+                  DISTANCE
+                </div>
+                <div className="text-lg font-bold text-gray-900">
+                  {priceEstimate?.distance || "--"}
+                </div>
+                <div className="text-[10px] text-gray-500">miles</div>
+              </div>
+              <div className="text-center border-x border-gray-200">
+                <div className="text-[10px] text-gray-500 font-bold mb-1">
+                  TIME
+                </div>
+                <div className="text-lg font-bold text-gray-900">
+                  {priceEstimate?.estimatedTime || "--"}
+                </div>
+                <div className="text-[10px] text-gray-500">minutes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] text-gray-500 font-bold mb-1">
+                  FARE
+                </div>
+                <div className="text-lg font-bold text-green-600">
+                  ${priceEstimate?.finalPrice || "--"}
+                </div>
+                <div className="text-[10px] text-gray-500">total</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Addresses - Compact */}
+          <div className="bg-white rounded-xl p-3 shadow-sm space-y-2">
+            <div className="flex items-start gap-2">
+              <div className="w-3 h-3 bg-green-500 rounded-full flex-shrink-0 mt-0.5"></div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] text-gray-500 font-bold mb-0.5">
+                  PICKUP
+                </div>
+                <div className="text-xs text-gray-900 leading-tight">
+                  {pickupAddress?.address}
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100"></div>
+            <div className="flex items-start gap-2">
+              <div className="w-3 h-3 bg-red-500 rounded-sm flex-shrink-0 mt-0.5"></div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] text-gray-500 font-bold mb-0.5">
+                  DESTINATION
+                </div>
+                <div className="text-xs text-gray-900 leading-tight">
+                  {destinationAddress?.address}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          {rideData?.status === "completed" && (
+            <button
+              onClick={onBookAnother}
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-transform"
+            >
+              Book Another Ride
+            </button>
+          )}
+
+          {/* Emergency & Share Buttons - Compact */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/track/${rideId}`;
+                if (navigator.share) {
+                  navigator.share({
+                    title: "Track My NELA Ride",
+                    url: shareUrl,
+                  });
+                } else {
+                  navigator.clipboard.writeText(shareUrl);
+                  alert("Link copied!");
+                }
+              }}
+              className="bg-white border-2 border-blue-200 text-blue-600 py-2 rounded-lg font-semibold text-xs active:scale-95 transition-transform flex items-center justify-center gap-1"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                Book Another Ride
-              </button>
-            )}
-          </>
-        )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                />
+              </svg>
+              Share
+            </button>
+
+            <button
+              onClick={() => {
+                if (confirm("Call emergency services?")) {
+                  window.location.href = "tel:911";
+                }
+              }}
+              className="bg-red-500 text-white py-2 rounded-lg font-semibold text-xs active:scale-95 transition-transform flex items-center justify-center gap-1"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              Emergency
+            </button>
+            {/* Cancel Ride Button - Only show when ride can be cancelled */}
+            {rideData?.status &&
+              ["pending", "accepted", "arrived"].includes(rideData.status) && (
+                <button
+                  onClick={async () => {
+                    if (confirm("Are you sure you want to cancel this ride?")) {
+                      try {
+                        await updateRideStatus(rideId, "cancelled", {
+                          cancelledBy: "customer",
+                          cancelReason: "Cancelled by customer",
+                          cancelledAt: new Date(),
+                        });
+                        alert("Ride cancelled successfully");
+                        onBookAnother();
+                      } catch (error) {
+                        console.error("Error cancelling ride:", error);
+                        alert("Failed to cancel ride. Please try again.");
+                      }
+                    }
+                  }}
+                  className="w-full bg-white border-2 border-red-300 text-red-600 py-3 rounded-xl font-bold active:scale-95 transition-transform"
+                >
+                  Cancel Ride
+                </button>
+              )}
+          </div>
+
+          {/* Bottom Padding */}
+          <div className="h-4"></div>
+        </div>
       </div>
     </div>
   );

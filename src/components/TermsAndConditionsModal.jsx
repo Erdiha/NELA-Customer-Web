@@ -9,13 +9,13 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
   const canProceed = agreedToTerms && agreedToLiability;
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-4 overflow-y-auto min-h-screen">
-      <div className="bg-white rounded-3xl max-w-2xl w-full my-8 shadow-2xl h-full">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[100] p-2 sm:p-4 overflow-y-auto rounded-t-2xl">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-2xl w-full my-4 sm:my-8 shadow-2xl max-h-[95vh] overflow-y-auto rounded-t-2xl">
         {/* Header */}
-        <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-6 rounded-t-3xl ">
-          <div className="flex items-center justify-center mb-2">
+        <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white p-4  rounded-t-2xl  sticky top-0 z-10">
+          <div className="flex items-center justify-center ">
             <svg
-              className="w-12 h-12"
+              className="w-10 h-10 "
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -28,58 +28,60 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-center">Terms & Conditions</h2>
-          <p className="text-center text-red-100 text-sm mt-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-center">
+            Terms & Conditions
+          </h2>
+          <p className="text-center text-red-100 text-xs sm:text-sm mt-2">
             Please read carefully before booking
           </p>
         </div>
 
         {/* Content */}
-        <div className="p-6 max-h-[60vh] overflow-y-auto ">
+        <div className="p-4 sm:p-6 max-h-[calc(95vh-320px)] sm:max-h-[calc(95vh-300px)] overflow-y-auto">
           {/* Main Terms */}
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center mt-10 ">
-              <span className="text-2xl mr-2">📜</span>
+          <div className="mb-4 sm:mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-gray-900  flex items-center">
+              <span className="text-xl sm:text-2xl mr-2">📜</span>
               NELA Ride Service Agreement
             </h3>
-            <div className="text-sm text-gray-700 space-y-3 bg-gray-50 p-4 rounded-xl">
+            <div className="text-xs sm:text-sm text-gray-700 space-y-2 sm:space-y-3 bg-gray-50 p-3 sm:p-4 rounded-xl">
               <p className="font-semibold">
                 By using NELA ride services, you acknowledge and agree to the
                 following:
               </p>
 
-              <div className="space-y-2">
-                <p>
+              <div className="space-y-1.5 sm:space-y-2">
+                <p className="leading-tight">
                   <strong>1. Independent Contractor Relationship:</strong> NELA
                   operates as a platform connecting passengers with independent
                   drivers. Drivers are not employees or agents of NELA.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>2. Service Availability:</strong> NELA does not
                   guarantee ride availability, driver acceptance, or specific
                   arrival times. Estimated times are approximations only.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>3. Pricing:</strong> All prices are estimates and may
                   vary based on actual distance, time, and route taken. Final
                   fare is determined at trip completion.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>4. Payment:</strong> You agree to pay all charges for
                   rides booked through your account. Payment methods must be
                   valid and current.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>5. Cancellation:</strong> Rides may be cancelled by
                   either party. Drivers may cancel without penalty. Passengers
                   may be subject to cancellation fees as posted.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>6. User Conduct:</strong> You agree to behave
                   respectfully, follow driver instructions, and comply with all
                   applicable laws. Inappropriate behavior may result in service
@@ -90,25 +92,25 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
           </div>
 
           {/* Liability Waiver */}
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-red-700 mb-3 flex items-center">
-              <span className="text-2xl mr-2">⚠️</span>
+          <div className="mb-4 sm:mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-red-700 mb-2 sm:mb-3 flex items-center">
+              <span className="text-xl sm:text-2xl mr-2">⚠️</span>
               Liability Waiver & Release
             </h3>
-            <div className="text-sm text-gray-700 space-y-3 bg-red-50 p-4 rounded-xl border-2 border-red-200">
-              <p className="font-bold text-red-900 uppercase">
+            <div className="text-xs sm:text-sm text-gray-700 space-y-2 sm:space-y-3 bg-red-50 p-3 sm:p-4 rounded-xl border-2 border-red-200">
+              <p className="font-bold text-red-900 uppercase text-[11px] sm:text-sm">
                 IMPORTANT - PLEASE READ CAREFULLY
               </p>
 
-              <div className="space-y-2">
-                <p>
+              <div className="space-y-1.5 sm:space-y-2">
+                <p className="leading-tight">
                   <strong>ASSUMPTION OF RISK:</strong> You acknowledge that
                   transportation services involve inherent risks including but
                   not limited to: vehicle accidents, traffic incidents, property
                   damage, personal injury, and other unforeseen events.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>RELEASE OF LIABILITY:</strong> To the fullest extent
                   permitted by law, you hereby RELEASE, WAIVE, DISCHARGE, and
                   COVENANT NOT TO SUE NELA, its owners, operators, drivers,
@@ -119,12 +121,12 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
                   using NELA services.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>INDEMNIFICATION:</strong> You agree to INDEMNIFY,
                   DEFEND, and HOLD HARMLESS NELA and its affiliates from any
                   claims, liabilities, damages, losses, costs, or expenses
                   (including attorney fees) arising from:
-                  <ul className="list-disc ml-6 mt-1">
+                  <ul className="list-disc ml-4 sm:ml-6 mt-1 space-y-0.5">
                     <li>Your use of NELA services</li>
                     <li>Your violation of these terms</li>
                     <li>Your violation of any third-party rights</li>
@@ -134,14 +136,14 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
                   </ul>
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>NO WARRANTIES:</strong> NELA services are provided "AS
                   IS" and "AS AVAILABLE" without warranties of any kind, either
                   express or implied. NELA does not warrant that services will
                   be uninterrupted, error-free, or secure.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>LIMITATION OF DAMAGES:</strong> In no event shall NELA
                   be liable for any indirect, incidental, special,
                   consequential, or punitive damages, including but not limited
@@ -149,21 +151,21 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
                   losses.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>MAXIMUM LIABILITY:</strong> NELA's total liability to
                   you for all claims arising from or related to these services
                   shall not exceed the amount you paid for the ride in question,
                   or $100, whichever is less.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>INSURANCE:</strong> You acknowledge that you are
                   responsible for maintaining your own health, travel, and
                   personal property insurance. NELA does not provide insurance
                   coverage for passengers.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>GOVERNING LAW:</strong> These terms shall be governed
                   by the laws of the State of California, without regard to
                   conflict of law principles. Any disputes shall be resolved
@@ -171,13 +173,13 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
                   California.
                 </p>
 
-                <p>
+                <p className="leading-tight">
                   <strong>SEVERABILITY:</strong> If any provision of these terms
                   is found to be unenforceable, the remaining provisions shall
                   remain in full force and effect.
                 </p>
 
-                <p className="font-bold text-red-900 mt-4">
+                <p className="font-bold text-red-900 mt-3 sm:mt-4 text-[11px] sm:text-sm leading-tight">
                   BY CHECKING THE BOXES BELOW AND PROCEEDING, YOU ACKNOWLEDGE
                   THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY THESE
                   TERMS, INCLUDING THE WAIVER OF LIABILITY AND RELEASE OF
@@ -188,30 +190,30 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
           </div>
 
           {/* Additional Policies */}
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center">
-              <span className="text-2xl mr-2">🔒</span>
+          <div className="mb-4 sm:mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2 sm:mb-3 flex items-center">
+              <span className="text-xl sm:text-2xl mr-2">🔒</span>
               Privacy & Safety
             </h3>
-            <div className="text-sm text-gray-700 space-y-2 bg-blue-50 p-4 rounded-xl">
-              <p>
+            <div className="text-xs sm:text-sm text-gray-700 space-y-1.5 sm:space-y-2 bg-blue-50 p-3 sm:p-4 rounded-xl">
+              <p className="leading-tight">
                 <strong>Data Collection:</strong> We collect and use your
                 personal information (name, phone, email, location) to provide
                 ride services and communicate with you.
               </p>
 
-              <p>
+              <p className="leading-tight">
                 <strong>Data Sharing:</strong> Your information is shared with
                 drivers only as necessary to complete your ride.
               </p>
 
-              <p>
+              <p className="leading-tight">
                 <strong>Safety:</strong> While we strive for safety, you are
                 responsible for your own safety decisions. Report any concerns
                 immediately.
               </p>
 
-              <p>
+              <p className="leading-tight">
                 <strong>Age Requirement:</strong> You must be 18+ years old to
                 use NELA services. Minors must be accompanied by an adult.
               </p>
@@ -219,12 +221,12 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
           </div>
 
           {/* Emergency Contact */}
-          <div className="mb-6 bg-yellow-50 border-2 border-yellow-300 p-4 rounded-xl">
-            <h3 className="text-sm font-bold text-yellow-900 mb-2 flex items-center">
-              <span className="text-xl mr-2">🚨</span>
+          <div className="mb-4 sm:mb-6 bg-yellow-50 border-2 border-yellow-300 p-3 sm:p-4 rounded-xl">
+            <h3 className="text-xs sm:text-sm font-bold text-yellow-900 mb-1 sm:mb-2 flex items-center">
+              <span className="text-lg sm:text-xl mr-2">🚨</span>
               Emergency Information
             </h3>
-            <p className="text-xs text-yellow-900">
+            <p className="text-[10px] sm:text-xs text-yellow-900 leading-tight">
               <strong>In case of emergency during your ride:</strong>
               <br />
               • Call 911 immediately for medical or safety emergencies
@@ -236,28 +238,28 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
         </div>
 
         {/* Acknowledgment Checkboxes */}
-        <div className="px-6 pb-4 space-y-3">
-          <label className="flex items-start space-x-3 cursor-pointer group">
+        <div className="px-4 sm:px-6 pb-3 sm:pb-4 space-y-2 sm:space-y-3 bg-white sticky bottom-0 border-t border-gray-200 pt-3 sm:pt-4">
+          <label className="flex items-start space-x-2 sm:space-x-3 cursor-pointer group">
             <input
               type="checkbox"
               checked={agreedToTerms}
               onChange={(e) => setAgreedToTerms(e.target.checked)}
-              className="w-5 h-5 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
             />
-            <span className="text-sm text-gray-700 group-hover:text-gray-900">
+            <span className="text-xs sm:text-sm text-gray-700 group-hover:text-gray-900 leading-tight">
               I have read and agree to the <strong>Terms & Conditions</strong>{" "}
               and understand the service agreement.
             </span>
           </label>
 
-          <label className="flex items-start space-x-3 cursor-pointer group">
+          <label className="flex items-start space-x-2 sm:space-x-3 cursor-pointer group">
             <input
               type="checkbox"
               checked={agreedToLiability}
               onChange={(e) => setAgreedToLiability(e.target.checked)}
-              className="w-5 h-5 mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+              className="w-4 h-4 sm:w-5 sm:h-5 mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer flex-shrink-0"
             />
-            <span className="text-sm text-gray-700 group-hover:text-gray-900">
+            <span className="text-xs sm:text-sm text-gray-700 group-hover:text-gray-900 leading-tight">
               I acknowledge and accept the{" "}
               <strong className="text-red-700">
                 Liability Waiver & Release
@@ -269,19 +271,19 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
         </div>
 
         {/* Action Buttons */}
-        <div className="px-6 pb-6 flex gap-3">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 flex gap-2 sm:gap-3 bg-white">
           <button
             onClick={onDecline}
-            className="flex-1 px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-2xl font-semibold transition-all"
+            className="flex-1 px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-800 rounded-xl sm:rounded-2xl font-semibold transition-all text-sm sm:text-base"
           >
             Decline
           </button>
           <button
             onClick={onAccept}
             disabled={!canProceed}
-            className={`flex-2 px-6 py-3 rounded-2xl font-semibold transition-all ${
+            className={`flex-[2] px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-semibold transition-all text-sm sm:text-base ${
               canProceed
-                ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg"
+                ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 active:from-green-800 active:to-emerald-800 text-white shadow-lg"
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
@@ -290,7 +292,7 @@ const TermsAndConditionsModal = ({ isOpen, onAccept, onDecline }) => {
         </div>
 
         {/* Legal Footer */}
-        <div className="px-6 pb-6 text-xs text-gray-500 text-center">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 text-[10px] sm:text-xs text-gray-500 text-center leading-tight bg-white">
           Last updated: {new Date().toLocaleDateString()}
           <br />
           By using NELA services, you agree to these terms in their entirety.

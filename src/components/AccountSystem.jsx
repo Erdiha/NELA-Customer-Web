@@ -101,6 +101,16 @@ const AccountSystem = ({ onLogin, onSkip }) => {
               name="name"
               value={formData.name}
               onChange={handleInputChange}
+              onFocus={(e) =>
+                setTimeout(
+                  () =>
+                    e.target.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    }),
+                  300
+                )
+              }
               className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-sm sm:text-base"
               placeholder="Enter your full name"
               required
@@ -117,6 +127,16 @@ const AccountSystem = ({ onLogin, onSkip }) => {
             name="email"
             value={formData.email}
             onChange={handleInputChange}
+            onFocus={(e) =>
+              setTimeout(
+                () =>
+                  e.target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  }),
+                300
+              )
+            }
             className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-sm sm:text-base"
             placeholder="Enter your email"
             required
@@ -133,6 +153,16 @@ const AccountSystem = ({ onLogin, onSkip }) => {
               name="phone"
               value={formData.phone}
               onChange={handleInputChange}
+              onFocus={(e) =>
+                setTimeout(
+                  () =>
+                    e.target.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    }),
+                  300
+                )
+              }
               className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-sm sm:text-base"
               placeholder="(555) 123-4567"
               required
@@ -149,6 +179,16 @@ const AccountSystem = ({ onLogin, onSkip }) => {
             name="password"
             value={formData.password}
             onChange={handleInputChange}
+            onFocus={(e) =>
+              setTimeout(
+                () =>
+                  e.target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  }),
+                300
+              )
+            }
             className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-sm sm:text-base"
             placeholder="Enter your password"
             required

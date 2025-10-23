@@ -258,12 +258,22 @@ function AddressInput({
           placeholder={placeholder}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={handleInputFocus}
+          onFocus={(e) => {
+            handleInputFocus();
+            setTimeout(
+              () =>
+                e.target.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                }),
+              300
+            );
+          }}
           onBlur={handleInputBlur}
           className="w-full pl-12 pr-24 sm:pr-28 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl 
-                     focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 
-                     transition-all duration-200 text-gray-800 placeholder-gray-500 
-                     text-sm outline-none hover:border-gray-300"
+             focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 
+             transition-all duration-200 text-gray-800 placeholder-gray-500 
+             text-sm outline-none hover:border-gray-300"
         />
 
         {/* Right side buttons */}

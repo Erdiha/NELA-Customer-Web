@@ -235,12 +235,13 @@ const MapView = ({ pickup, destination, driverLocation }) => {
   }, [pickup, destination, driverLocation]);
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div
         ref={mapRef}
         style={{
           width: "100%",
-          height: "300px",
+          height: "100%",
+          minHeight: "300px",
           borderRadius: "16px",
           border: "2px solid #e5e7eb",
         }}

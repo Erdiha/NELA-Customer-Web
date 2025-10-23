@@ -11,6 +11,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
   const slides = [
     {
       id: "welcome",
+      shortName: "Welcome",
       icon: "👋",
       title: "Welcome to NELA",
       subtitle: "Northeast LA's Community Rideshare",
@@ -21,6 +22,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
     },
     {
       id: "pricing",
+      shortName: "Pricing",
       icon: "💰",
       title: "20% Lower Prices",
       subtitle: "Price Match Guarantee",
@@ -32,6 +34,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
     },
     {
       id: "drivers",
+      shortName: "Drivers",
       icon: "🤝",
       title: "Fair Driver Pay",
       subtitle: "90% Goes to Drivers",
@@ -43,6 +46,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
     },
     {
       id: "how-it-works",
+      shortName: "How",
       icon: "🚀",
       title: "How It Works",
       subtitle: "Simple 3-Step Process",
@@ -53,6 +57,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
     },
     {
       id: "service-area",
+      shortName: "Areas",
       icon: "🗺️",
       title: "Service Area",
       subtitle: "We Know Northeast LA",
@@ -63,6 +68,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
     },
     {
       id: "payment",
+      shortName: "Payment",
       icon: "💳",
       title: "Payment Options",
       subtitle: "Multiple Ways to Pay",
@@ -73,16 +79,18 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
     },
     {
       id: "safety",
+      shortName: "Safety",
       icon: "🛡️",
       title: "Safety First",
       subtitle: "Your Security Matters",
       description:
-        "• All drivers background-checked\n• Real-time ride tracking\n• Share trip link with friends/family\n• 24/7 support: (555) 123-4567\n• Emergency: Call 911 or use in-app SOS",
+        "• All drivers background-checked\n• Real-time ride tracking\n• Share trip link with friends/family\n•  Emergency: Call 911 or use in-app SOS",
       color: "from-red-500 to-orange-500",
       keywords: "safety security background check emergency",
     },
     {
       id: "community",
+      shortName: "Impact",
       icon: "🏘️",
       title: "Community Impact",
       subtitle: "More Than Just Rides",
@@ -162,15 +170,15 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
               <button
                 key={slide.id}
                 onClick={() => setCurrentSlide(index)}
-                className={`flex flex-col items-center justify-center py-1.5 sm:py-2 px-0.5 sm:px-1 rounded-lg transition-all touch-manipulation ${
+                className={`flex flex-col items-center  justify-center py-1.5 sm:py-2 px-0.5 sm:px-1 rounded-lg transition-all touch-manipulation ${
                   currentSlide === index
                     ? `bg-gradient-to-r ${slide.color} text-white shadow-md scale-105`
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
                 <span className="text-md md:text-xl mb-0.5">{slide.icon}</span>
-                <span className="text-[8px] sm:text-[9px] font-medium text-center leading-tight">
-                  {slide.title.split(" ")[0]}
+                <span className="text-[14px] sm:text-[9px] font-medium text-center leading-tight">
+                  {slide.shortName}
                 </span>
               </button>
             ))}

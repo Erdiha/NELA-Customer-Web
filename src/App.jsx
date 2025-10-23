@@ -797,21 +797,23 @@ function App() {
               onClick={() => setCurrentPage("home")}
               className="flex items-center space-x-2 group"
             >
-              <div className="w-10 h-10 icon-brand rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                <span className="text-white text-lg font-bold">N</span>
+              <div className="w-10 h-10 icon-brand rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+                <span className="text-white text-2xl font-bold">N</span>
               </div>
               <span className="text-xl text-brand">NELA</span>
             </button>
             <button
               onClick={() => {
-                setShowOnboarding(true); // Show directly without cookie check
+                setShowOnboarding(true);
               }}
-              className="ml-2 min-w-6 h-6 rounded-full hover:bg-white hover:text-black text-black  flex items-center justify-center transition-all text-sm  p-4 "
+              className="w-9 h-9 rounded-full border-2 border-neutral-300 hover:border-blue-500 bg-white hover:bg-blue-50 flex items-center justify-center transition-all duration-300 md:w-auto md:h-auto md:rounded-2xl md:border-0 md:bg-gradient-to-r md:from-blue-500 md:to-purple-500 md:hover:from-blue-600 md:hover:to-purple-600 md:text-white md:shadow-md md:hover:shadow-lg md:px-4 md:py-2"
               title="How it works"
             >
-              ℹ️ <span className="hidden md:flex pl-2"> How It Works?</span>
+              <span className="text-xl md:hidden">💡</span>
+              <span className="hidden md:flex items-center font-medium text-sm">
+                💡 <span className="ml-2">How It Works</span>
+              </span>
             </button>
-
             <div className="flex items-center space-x-3">
               {user ? (
                 <div className="flex items-center space-x-3">
@@ -1305,8 +1307,8 @@ function App() {
                       <p className="font-semibold text-accent-dark mb-2">
                         Price Match Guarantee
                       </p>
-                      <p className="md:text-sm text-cyan-800 text-xs">
-                        We'll match any competitor's price and apply 15%
+                      <p className="md:text-sm text-cyan-800 text-[0.86rem]">
+                        We'll match any competitor's price and apply 20%
                         discount. Show your driver the current Uber/Lyft rate if
                         needed.
                       </p>
@@ -1363,9 +1365,22 @@ function App() {
                       setPickupAddress(null);
                       setDestinationAddress(null);
                     }}
-                    className="w-full sm:flex-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3 sm:py-4 px-4 sm:px-6 rounded-2xl transition-all duration-300 font-medium text-sm sm:text-base"
+                    className="w-full sm:flex-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 py-3 sm:py-4 px-4 sm:px-6 rounded-2xl transition-all duration-300 font-medium text-sm sm:text-base flex items-center justify-center gap-2"
                   >
-                    ← Edit Trip
+                    <svg
+                      className="w-4 h-4 sm:w-5 sm:h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                      />
+                    </svg>
+                    <span>Edit Trip</span>
                   </button>
                   <button
                     onClick={handleBookRide}

@@ -800,7 +800,12 @@ function App() {
               <div className="w-10 h-10 icon-brand rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
                 <span className="text-white text-2xl font-bold">N</span>
               </div>
-              <span className="text-xl text-brand">NELA</span>
+              <span className="text-xl text-brand relative">
+                NELA{" "}
+                <span className="text-black/60 font-thin italic text-xs absolute bottom-[-7px] right-[-5px] bg-white/10 ">
+                  Ride
+                </span>
+              </span>
             </button>
             <button
               onClick={() => {

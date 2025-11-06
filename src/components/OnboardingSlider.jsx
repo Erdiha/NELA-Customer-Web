@@ -132,7 +132,17 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
       )
     : slides;
 
-  const currentSlideData = slides[currentSlide];
+  useEffect(() => {
+    // Reset or clamp index when results change
+    if (currentSlide >= (filteredSlides?.length ?? 0)) {
+      setCurrentSlide(0);
+    }
+  }, [searchQuery, filteredSlides?.length]);
+
+  const currentSlideData =
+    filteredSlides && filteredSlides.length > 0
+      ? filteredSlides[Math.min(currentSlide, filteredSlides.length - 1)]
+      : null;
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-red-50 flex flex-col">
@@ -157,7 +167,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
           </div>
 
           <span className="text-xs sm:text-sm text-gray-600 font-medium whitespace-nowrap flex-shrink-0">
-            {currentSlide + 1}/{slides.length}
+            {currentSlide + 1}/{filteredSlides.length}
           </span>
         </div>
       </header>
@@ -166,7 +176,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 shadow-lg z-50 pb-safe">
         <div className="px-1.5 sm:px-2 py-1.5 sm:py-2">
           <div className="grid grid-cols-4 gap-1 sm:gap-1.5">
-            {slides.map((slide, index) => (
+            {filteredSlides.map((slide, index) => (
               <button
                 key={slide.id}
                 onClick={() => setCurrentSlide(index)}
@@ -196,7 +206,7 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
                 Topics
               </h3>
               <nav className="space-y-2">
-                {slides.map((slide, index) => (
+                {filteredSlides.map((slide, index) => (
                   <motion.button
                     key={slide.id}
                     onClick={() => setCurrentSlide(index)}
@@ -386,13 +396,13 @@ const OnboardingSlider = ({ onComplete, showSkip = false }) => {
 
                       <button
                         onClick={() =>
-                          currentSlide === slides.length - 1
+                          currentSlide === filteredSlides.length - 1
                             ? onComplete()
                             : setCurrentSlide(currentSlide + 1)
                         }
                         className="px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg sm:rounded-xl hover:shadow-lg transition-all touch-manipulation"
                       >
-                        {currentSlide === slides.length - 1
+                        {currentSlide === filteredSlides.length - 1
                           ? "Start"
                           : "Next →"}
                       </button>

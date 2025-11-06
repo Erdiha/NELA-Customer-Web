@@ -20,25 +20,65 @@ function AddressInput({
   const [showFavorites, setShowFavorites] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
   const [showQuickPick, setShowQuickPick] = useState(false);
-  const abortControllerRef = useRef(null);
   const [isSelectingFromSuggestion, setIsSelectingFromSuggestion] =
     useState(false);
   const justSelectedRef = useRef(false);
+  const autocompleteServiceRef = useRef(null);
+  const placesServiceRef = useRef(null);
+  const geocoderRef = useRef(null);
+  const [mapsLoaded, setMapsLoaded] = useState(false);
+
+  // Initialize Google Maps services using new API
+  useEffect(() => {
+    const loadGoogleMaps = async () => {
+      try {
+        // Load the script manually
+        if (!document.getElementById("google-maps-script")) {
+          const script = document.createElement("script");
+          script.id = "google-maps-script";
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${
+            import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+          }&libraries=places`;
+          script.async = true;
+          script.defer = true;
+
+          script.onload = () => {
+            if (window.google && window.google.maps) {
+              autocompleteServiceRef.current =
+                new window.google.maps.places.AutocompleteService();
+              const dummyDiv = document.createElement("div");
+              placesServiceRef.current =
+                new window.google.maps.places.PlacesService(dummyDiv);
+              geocoderRef.current = new window.google.maps.Geocoder();
+              setMapsLoaded(true);
+            }
+          };
+
+          document.head.appendChild(script);
+        } else if (window.google && window.google.maps) {
+          autocompleteServiceRef.current =
+            new window.google.maps.places.AutocompleteService();
+          const dummyDiv = document.createElement("div");
+          placesServiceRef.current =
+            new window.google.maps.places.PlacesService(dummyDiv);
+          geocoderRef.current = new window.google.maps.Geocoder();
+          setMapsLoaded(true);
+        }
+      } catch (error) {
+        console.error("Error loading Google Maps:", error);
+      }
+    };
+
+    loadGoogleMaps();
+  }, []);
 
   useEffect(() => {
-    console.log(
-      "⚡ useEffect triggered, query:",
-      query,
-      "length:",
-      query.length
-    );
-
     if (justSelectedRef.current) {
       justSelectedRef.current = false;
       return;
     }
 
-    if (query.length > 3) {
+    if (query.length > 3 && mapsLoaded) {
       setIsLoading(true);
       const timer = setTimeout(() => {
         searchAddresses(query);
@@ -46,49 +86,40 @@ function AddressInput({
 
       return () => {
         clearTimeout(timer);
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-        }
       };
     } else {
       setSuggestions([]);
       setShowSuggestions(false);
       setIsLoading(false);
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
     }
-  }, [query]);
+  }, [query, mapsLoaded]);
 
   const searchAddresses = async (searchQuery) => {
-    console.log("🔍 SEARCHING FOR:", searchQuery);
-    // Cancel previous request if still pending
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    // Create new abort controller for this request
-    abortControllerRef.current = new AbortController();
+    if (!autocompleteServiceRef.current) return;
 
     try {
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-          searchQuery
-        )}&limit=5&countrycodes=us`,
-        {
-          signal: abortControllerRef.current.signal,
+      const request = {
+        input: searchQuery,
+        componentRestrictions: { country: "us" },
+      };
+
+      autocompleteServiceRef.current.getPlacePredictions(
+        request,
+        (predictions, status) => {
+          if (
+            status === window.google.maps.places.PlacesServiceStatus.OK &&
+            predictions
+          ) {
+            setSuggestions(predictions);
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+          setIsLoading(false);
         }
       );
-      const data = await response.json();
-
-      setSuggestions(data);
-      setShowSuggestions(true);
-      setIsLoading(false);
     } catch (error) {
-      if (error.name === "AbortError") {
-        console.log("Request cancelled");
-        return;
-      }
       console.error("Error searching addresses:", error);
       setIsLoading(false);
     }
@@ -107,28 +138,36 @@ function AddressInput({
       async (position) => {
         const { latitude, longitude } = position.coords;
 
-        try {
-          const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-          );
-          const data = await response.json();
+        if (!geocoderRef.current) {
+          setLocationError("Google Maps not loaded yet");
+          setIsGettingLocation(false);
+          return;
+        }
 
-          if (data && data.display_name) {
-            justSelectedRef.current = true;
-            setQuery(data.display_name);
-            onAddressSelect({
-              address: data.display_name,
-              lat: latitude,
-              lng: longitude,
-            });
-            setShowFavorites(false);
-          } else {
-            setLocationError("Unable to get address for current location");
-          }
+        try {
+          const latLng = { lat: latitude, lng: longitude };
+
+          geocoderRef.current.geocode(
+            { location: latLng },
+            (results, status) => {
+              if (status === "OK" && results[0]) {
+                justSelectedRef.current = true;
+                setQuery(results[0].formatted_address);
+                onAddressSelect({
+                  address: results[0].formatted_address,
+                  lat: latitude,
+                  lng: longitude,
+                });
+                setShowFavorites(false);
+              } else {
+                setLocationError("Unable to get address for current location");
+              }
+              setIsGettingLocation(false);
+            }
+          );
         } catch (error) {
           console.error("Error reverse geocoding:", error);
           setLocationError("Error getting address for current location");
-        } finally {
           setIsGettingLocation(false);
         }
       },
@@ -158,29 +197,43 @@ function AddressInput({
   };
 
   const handleSelectAddress = (place) => {
-    const lat = parseFloat(place.lat);
-    const lng = parseFloat(place.lon);
+    if (!placesServiceRef.current) return;
 
-    if (isPickup && !isPointInServiceArea(lat, lng)) {
-      alert(
-        "Sorry, we only pick up from: Eagle Rock, Glendale, Highland Park, Cypress Park, Mount Washington, Glassell Park, and major LA airports (LAX, Burbank, Long Beach)."
-      );
-      return;
-    }
+    // Get place details to get coordinates
+    placesServiceRef.current.getDetails(
+      {
+        placeId: place.place_id,
+        fields: ["geometry", "formatted_address"],
+      },
+      (placeDetails, status) => {
+        if (
+          status === window.google.maps.places.PlacesServiceStatus.OK &&
+          placeDetails
+        ) {
+          const lat = placeDetails.geometry.location.lat();
+          const lng = placeDetails.geometry.location.lng();
 
-    console.log("✅ SELECTED:", place.display_name);
+          if (isPickup && !isPointInServiceArea(lat, lng)) {
+            alert(
+              "Sorry, we only pick up from: Eagle Rock, Glendale, Highland Park, Cypress Park, Mount Washington, Glassell Park, and major LA airports (LAX, Burbank, Long Beach)."
+            );
+            return;
+          }
 
-    justSelectedRef.current = true; // Set flag
-    setQuery(place.display_name);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setIsLoading(false);
+          justSelectedRef.current = true;
+          setQuery(placeDetails.formatted_address);
+          setSuggestions([]);
+          setShowSuggestions(false);
+          setIsLoading(false);
 
-    onAddressSelect({
-      address: place.display_name,
-      lat: lat,
-      lng: lng,
-    });
+          onAddressSelect({
+            address: placeDetails.formatted_address,
+            lat: lat,
+            lng: lng,
+          });
+        }
+      }
+    );
   };
 
   const handleFavoriteSelect = (location) => {
@@ -368,7 +421,6 @@ function AddressInput({
       )}
 
       {/* Suggestions Dropdown */}
-      {/* Suggestions Dropdown */}
       {showSuggestions && suggestions.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 overflow-hidden">
           {suggestions.map((place, index) => (
@@ -376,13 +428,13 @@ function AddressInput({
               key={`${place.place_id}-${index}`}
               className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors duration-150"
               onMouseDown={(e) => {
-                e.preventDefault(); // CRITICAL: Prevent input blur/focus events
+                e.preventDefault();
                 handleSelectAddress(place);
               }}
             >
               <div className="flex items-center">
                 <div className="text-gray-700 text-sm leading-relaxed">
-                  {place.display_name}
+                  {place.description}
                 </div>
               </div>
             </div>
@@ -441,7 +493,7 @@ function AddressInput({
       {showQuickPick && (
         <QuickLocationPicker
           onSelectLocation={(location) => {
-            justSelectedRef.current = true; // ADD THIS
+            justSelectedRef.current = true;
             setQuery(location.address);
             onAddressSelect(location);
             setShowQuickPick(false);

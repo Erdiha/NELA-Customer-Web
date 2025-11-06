@@ -1,106 +1,144 @@
-// Create as src/components/RideTrackingMap.jsx in customer web app
-
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 const RideTrackingMap = ({ ride, driverLocation }) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [estimatedArrival, setEstimatedArrival] = useState("Calculating...");
+  const mapRef = useRef(null);
+  const mapInstance = useRef(null);
+  const driverMarkerRef = useRef(null);
 
   useEffect(() => {
-    // Initialize Google Maps
-    if (window.google && window.google.maps) {
-      initializeMap();
-    } else {
-      loadGoogleMapsScript();
-    }
+    const loadGoogleMaps = () => {
+      if (!document.getElementById("google-maps-script")) {
+        const script = document.createElement("script");
+        script.id = "google-maps-script";
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${
+          import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+        }&libraries=geometry`;
+        script.async = true;
+        script.defer = true;
+
+        script.onload = () => {
+          if (window.google && window.google.maps) {
+            initializeMap();
+          }
+        };
+
+        document.head.appendChild(script);
+      } else if (window.google && window.google.maps) {
+        initializeMap();
+      }
+    };
+
+    loadGoogleMaps();
   }, []);
 
   useEffect(() => {
-    if (driverLocation && ride) {
+    if (driverLocation && ride && mapInstance.current) {
+      updateDriverMarker();
       calculateETA();
     }
   }, [driverLocation, ride]);
 
-  const loadGoogleMapsScript = () => {
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${
-      import.meta.env.REACT_APP_GOOGLE_MAPS_API_KEY
-    }&libraries=geometry`;
-    script.onload = initializeMap;
-    document.head.appendChild(script);
-  };
-
   const initializeMap = () => {
-    if (!ride) return;
+    if (!ride || !mapRef.current) return;
 
-    const map = new window.google.maps.Map(
-      document.getElementById("ride-map"),
-      {
-        zoom: 13,
-        center: ride.pickup || { lat: 40.7128, lng: -74.006 },
-        styles: [
-          {
-            featureType: "poi",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }],
-          },
-        ],
-      }
-    );
+    const google = window.google;
 
-    // Pickup marker
+    mapInstance.current = new google.maps.Map(mapRef.current, {
+      zoom: 13,
+      center: ride.pickup || { lat: 34.0522, lng: -118.2437 },
+      zoomControl: true,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+      styles: [
+        {
+          featureType: "poi",
+          elementType: "labels",
+          stylers: [{ visibility: "off" }],
+        },
+      ],
+    });
+
+    // Pickup marker (green)
     if (ride.pickup) {
-      new window.google.maps.Marker({
+      new google.maps.Marker({
         position: ride.pickup,
-        map: map,
+        map: mapInstance.current,
         title: "Pickup Location",
         icon: {
-          url: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
-          scaledSize: new window.google.maps.Size(40, 40),
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: "#10b981",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 3,
         },
       });
     }
 
-    // Destination marker
+    // Destination marker (red square)
     if (ride.dropoff) {
-      new window.google.maps.Marker({
+      new google.maps.Marker({
         position: ride.dropoff,
-        map: map,
+        map: mapInstance.current,
         title: "Destination",
         icon: {
-          url: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
-          scaledSize: new window.google.maps.Size(40, 40),
+          path: "M -5,-5 L 5,-5 L 5,5 L -5,5 Z",
+          scale: 1.4,
+          fillColor: "#ef4444",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 3,
         },
       });
     }
 
     // Driver marker (if available)
     if (driverLocation) {
-      window.driverMarker = new window.google.maps.Marker({
+      driverMarkerRef.current = new google.maps.Marker({
         position: driverLocation,
-        map: map,
+        map: mapInstance.current,
         title: "Your Driver",
         icon: {
-          url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-          scaledSize: new window.google.maps.Size(40, 40),
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: "#3b82f6",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 3,
         },
       });
 
-      // Update map bounds to include all markers
-      const bounds = new window.google.maps.LatLngBounds();
-      bounds.extend(ride.pickup);
-      bounds.extend(ride.dropoff);
+      // Update map bounds
+      const bounds = new google.maps.LatLngBounds();
+      if (ride.pickup) bounds.extend(ride.pickup);
+      if (ride.dropoff) bounds.extend(ride.dropoff);
       bounds.extend(driverLocation);
-      map.fitBounds(bounds);
+      mapInstance.current.fitBounds(bounds, { padding: 50 });
     }
 
     setMapLoaded(true);
   };
 
+  const updateDriverMarker = () => {
+    if (!driverMarkerRef.current || !driverLocation) return;
+
+    driverMarkerRef.current.setPosition(driverLocation);
+
+    // Update bounds
+    const google = window.google;
+    const bounds = new google.maps.LatLngBounds();
+    if (ride.pickup) bounds.extend(ride.pickup);
+    if (ride.dropoff) bounds.extend(ride.dropoff);
+    bounds.extend(driverLocation);
+    mapInstance.current.fitBounds(bounds, { padding: 50 });
+  };
+
   const calculateETA = () => {
     if (!driverLocation || !ride.pickup) return;
 
-    // Simple distance calculation (you can use Google Distance Matrix API for accuracy)
     const distance = calculateDistance(
       driverLocation.lat,
       driverLocation.lng,
@@ -108,7 +146,7 @@ const RideTrackingMap = ({ ride, driverLocation }) => {
       ride.pickup.longitude
     );
 
-    // Rough ETA calculation (assuming 25 mph average speed)
+    // ETA calculation (assuming 25 mph average speed)
     const etaMinutes = Math.round((distance / 25) * 60);
     setEstimatedArrival(`${etaMinutes} min`);
   };
@@ -141,7 +179,10 @@ const RideTrackingMap = ({ ride, driverLocation }) => {
     <div className="ride-tracking-map">
       {/* Map Container */}
       <div className="relative">
-        <div id="ride-map" className="w-full h-64 rounded-lg border"></div>
+        <div
+          ref={mapRef}
+          className="w-full h-64 rounded-lg border-2 border-gray-200"
+        ></div>
 
         {/* Loading overlay */}
         {!mapLoaded && (

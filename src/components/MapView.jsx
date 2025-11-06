@@ -1,238 +1,185 @@
 import React, { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 
 const MapView = ({ pickup, destination, driverLocation }) => {
   const mapRef = useRef(null);
   const mapInstance = useRef(null);
   const markersRef = useRef({});
-  const routeLayerRef = useRef(null);
+  const routePolylineRef = useRef(null);
+  const directionsServiceRef = useRef(null);
   const [routeLoading, setRouteLoading] = useState(true);
+  const [mapLoaded, setMapLoaded] = useState(false);
 
+  // Initialize Google Maps by loading script
   useEffect(() => {
-    if (!mapRef.current || !pickup || !destination) return;
+    const loadGoogleMaps = () => {
+      if (!document.getElementById("google-maps-script")) {
+        const script = document.createElement("script");
+        script.id = "google-maps-script";
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${
+          import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+        }&libraries=places,geometry`;
+        script.async = true;
+        script.defer = true;
 
-    // Initialize map once
-    if (!mapInstance.current) {
-      mapInstance.current = L.map(mapRef.current, {
+        script.onload = () => {
+          if (
+            window.google &&
+            window.google.maps &&
+            mapRef.current &&
+            !mapInstance.current
+          ) {
+            initializeMap();
+          }
+        };
+
+        document.head.appendChild(script);
+      } else if (
+        window.google &&
+        window.google.maps &&
+        mapRef.current &&
+        !mapInstance.current
+      ) {
+        initializeMap();
+      }
+    };
+
+    const initializeMap = () => {
+      mapInstance.current = new window.google.maps.Map(mapRef.current, {
+        zoom: 13,
+        center: { lat: 34.0522, lng: -118.2437 },
         zoomControl: true,
-        attributionControl: true,
-      }).setView([pickup.lat, pickup.lng], 13);
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: true,
+        styles: [
+          {
+            featureType: "poi",
+            elementType: "labels",
+            stylers: [{ visibility: "off" }],
+          },
+        ],
+      });
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap contributors",
-      }).addTo(mapInstance.current);
-    }
+      directionsServiceRef.current = new window.google.maps.DirectionsService();
+      setMapLoaded(true);
+    };
+
+    loadGoogleMaps();
+  }, []);
+
+  // Draw route and markers
+  useEffect(() => {
+    if (!mapLoaded || !mapInstance.current || !pickup || !destination) return;
+
+    const google = window.google;
 
     // Clear old markers and route
-    Object.values(markersRef.current).forEach((marker) => marker.remove());
+    Object.values(markersRef.current).forEach((marker) => marker.setMap(null));
     markersRef.current = {};
-    if (routeLayerRef.current) {
-      mapInstance.current.removeLayer(routeLayerRef.current);
+    if (routePolylineRef.current) {
+      routePolylineRef.current.setMap(null);
     }
-    // Fetch actual driving route from OSRM
+
+    // Fetch and draw route
     const fetchRoute = async () => {
       setRouteLoading(true);
       try {
-        const response = await fetch(
-          `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`
-        );
-        const data = await response.json();
+        const request = {
+          origin: { lat: pickup.lat, lng: pickup.lng },
+          destination: { lat: destination.lat, lng: destination.lng },
+          travelMode: google.maps.TravelMode.DRIVING,
+        };
 
-        if (data.routes && data.routes[0]) {
-          const route = data.routes[0];
-          const coordinates = route.geometry.coordinates.map((coord) => [
-            coord[1],
-            coord[0],
-          ]);
+        directionsServiceRef.current.route(request, (result, status) => {
+          if (status === google.maps.DirectionsStatus.OK) {
+            const route = result.routes[0].overview_path;
 
-          // Professional multi-layer route (Uber-style)
-          const routeGroup = L.layerGroup();
+            // Draw route polyline (NELA blue)
+            routePolylineRef.current = new google.maps.Polyline({
+              path: route,
+              geodesic: true,
+              strokeColor: "#3b82f6",
+              strokeOpacity: 1.0,
+              strokeWeight: 6,
+              map: mapInstance.current,
+            });
 
-          // Bottom glow/shadow
-          L.polyline(coordinates, {
-            color: "#1e40af",
-            weight: 12,
-            opacity: 0.15,
-            smoothFactor: 1,
-            lineJoin: "round",
-            lineCap: "round",
-          }).addTo(routeGroup);
-
-          // Main route line (NELA blue)
-          L.polyline(coordinates, {
-            color: "#3b82f6",
-            weight: 6,
-            opacity: 1,
-            smoothFactor: 1,
-            lineJoin: "round",
-            lineCap: "round",
-          }).addTo(routeGroup);
-
-          routeLayerRef.current = routeGroup;
-          routeGroup.addTo(mapInstance.current);
-          setRouteLoading(false);
-        }
+            setRouteLoading(false);
+          } else {
+            console.error("Directions request failed:", status);
+            setRouteLoading(false);
+          }
+        });
       } catch (error) {
         console.error("Error fetching route:", error);
-        const straightLine = L.polyline(
-          [
-            [pickup.lat, pickup.lng],
-            [destination.lat, destination.lng],
-          ],
-          {
-            color: "#3b82f6",
-            weight: 4,
-            opacity: 0.6,
-            dashArray: "10, 10",
-          }
-        );
-        routeLayerRef.current = straightLine;
-        straightLine.addTo(mapInstance.current);
         setRouteLoading(false);
       }
     };
 
     fetchRoute();
 
-    // Pickup marker (green - professional size)
-    const pickupIcon = L.divIcon({
-      html: `
-    <div style="
-      position: relative;
-      width: 28px;
-      height: 28px;
-    ">
-      <div style="
-        width: 28px;
-        height: 28px;
-        background: #10b981;
-        border: 3px solid white;
-        border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <div style="
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 50%;
-        "></div>
-      </div>
-    </div>
-  `,
-      className: "",
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
+    // Pickup marker (green circle)
+    markersRef.current.pickup = new google.maps.Marker({
+      position: { lat: pickup.lat, lng: pickup.lng },
+      map: mapInstance.current,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 10,
+        fillColor: "#10b981",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 3,
+      },
+      title: "Pickup",
     });
-    markersRef.current.pickup = L.marker([pickup.lat, pickup.lng], {
-      icon: pickupIcon,
-    }).addTo(mapInstance.current);
 
-    // Destination marker (red square - Uber style)
-    const destIcon = L.divIcon({
-      html: `
-    <div style="
-      position: relative;
-      width: 28px;
-      height: 28px;
-    ">
-      <div style="
-        width: 28px;
-        height: 28px;
-        background: #ef4444;
-        border: 3px solid white;
-        border-radius: 4px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <div style="
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 1px;
-        "></div>
-      </div>
-    </div>
-  `,
-      className: "",
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
+    // Destination marker (red square)
+    markersRef.current.destination = new google.maps.Marker({
+      position: { lat: destination.lat, lng: destination.lng },
+      map: mapInstance.current,
+      icon: {
+        path: "M -5,-5 L 5,-5 L 5,5 L -5,5 Z",
+        scale: 1.4,
+        fillColor: "#ef4444",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 3,
+      },
+      title: "Destination",
     });
-    markersRef.current.destination = L.marker(
-      [destination.lat, destination.lng],
-      { icon: destIcon }
-    ).addTo(mapInstance.current);
 
-    // Driver marker (car icon - slightly larger, NELA blue)
+    // Driver marker (car icon)
     if (driverLocation) {
-      const driverIcon = L.divIcon({
-        html: `
-      <div style="
-        position: relative;
-        width: 36px;
-        height: 36px;
-      ">
-        <div style="
-          width: 36px;
-          height: 36px;
-          background: #3b82f6;
-          border: 3px solid white;
-          border-radius: 50%;
-          box-shadow: 0 3px 12px rgba(59,130,246,0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-        ">🚗</div>
-        <div style="
-          position: absolute;
-          bottom: -4px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 20px;
-          height: 20px;
-          background: #3b82f6;
-          opacity: 0.3;
-          border-radius: 50%;
-          animation: pulse 2s infinite;
-        "></div>
-      </div>
-      <style>
-        @keyframes pulse {
-          0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.3; }
-          50% { transform: translateX(-50%) scale(1.5); opacity: 0; }
-        }
-      </style>
-    `,
-        className: "",
-        iconSize: [8, 8],
-        iconAnchor: [10, 10],
+      markersRef.current.driver = new google.maps.Marker({
+        position: {
+          lat: driverLocation.latitude,
+          lng: driverLocation.longitude,
+        },
+        map: mapInstance.current,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: "#3b82f6",
+          fillOpacity: 1,
+          strokeColor: "#ffffff",
+          strokeWeight: 3,
+        },
+        title: "Driver",
       });
-      markersRef.current.driver = L.marker(
-        [driverLocation.latitude, driverLocation.longitude],
-        { icon: driverIcon }
-      ).addTo(mapInstance.current);
     }
-    // Fit bounds with proper padding
-    const bounds = L.latLngBounds([
-      [pickup.lat, pickup.lng],
-      [destination.lat, destination.lng],
-    ]);
-    if (driverLocation) {
-      bounds.extend([driverLocation.latitude, driverLocation.longitude]);
-    }
-    mapInstance.current.fitBounds(bounds, {
-      padding: [30, 30],
-      animate: true,
-    });
 
-    // Fetch actual driving route from OpenRouteService (free)
-  }, [pickup, destination, driverLocation]);
+    // Fit bounds
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend({ lat: pickup.lat, lng: pickup.lng });
+    bounds.extend({ lat: destination.lat, lng: destination.lng });
+    if (driverLocation) {
+      bounds.extend({
+        lat: driverLocation.latitude,
+        lng: driverLocation.longitude,
+      });
+    }
+    mapInstance.current.fitBounds(bounds, { padding: 50 });
+  }, [mapLoaded, pickup, destination, driverLocation]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
